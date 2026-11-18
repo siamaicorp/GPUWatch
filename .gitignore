@@ -1,0 +1,10 @@
+# Build output
+.build/
+dist/
+
+# The brand source artwork lives in Packaging/Brand/; the copy that arrives by
+# hand in the project root is not part of the source tree.
+/siamai_logo.png
+
+# macOS
+.DS_Store

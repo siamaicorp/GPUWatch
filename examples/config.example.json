@@ -1,0 +1,37 @@
+{
+  "hosts" : [
+    {
+      "destination" : "dgx-prod-01",
+      "displayName" : "dgx-prod-01",
+      "enabled" : true,
+      "expectedGPUCount" : 8,
+      "id" : "4F1C2A70-0E31-4C8B-9A55-8D2E6B1F0A11",
+      "temperatureWarningThreshold" : 85
+    },
+    {
+      "destination" : "gpu-node-02.example.internal",
+      "displayName" : "gpu-node-02",
+      "enabled" : true,
+      "expectedGPUCount" : 4,
+      "id" : "7B3D5E91-2A64-4F17-8C0D-1E5A9B7C3D22",
+      "identityFile" : "~/.ssh/id_ed25519",
+      "port" : 2222,
+      "temperatureWarningThreshold" : 80,
+      "username" : "ops"
+    },
+    {
+      "destination" : "reserved-03",
+      "displayName" : "reserved-03",
+      "enabled" : false,
+      "expectedGPUCount" : 4,
+      "id" : "9C5E7A13-4B86-4A29-9D1F-3B7C5E9A1B33"
+    }
+  ],
+  "schemaVersion" : 1,
+  "settings" : {
+    "intervalSeconds" : 30,
+    "launchAtLogin" : false,
+    "maxConcurrentChecks" : 5,
+    "notificationsEnabled" : false
+  }
+}
