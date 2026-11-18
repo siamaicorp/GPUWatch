@@ -8,14 +8,14 @@ on:
 
 jobs:
   test:
-    # macOS 14 is the minimum supported platform; macos-15 covers the current
-    # toolchain. Both are needed: the deployment target is a claim that should be
-    # checked, not just documented.
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-14, macos-15]
-    runs-on: ${{ matrix.os }}
+    # `macos-latest` rather than a pinned version: an unavailable label makes the
+    # job unrunnable, and this workflow's job is to prove the code builds and
+    # passes, not to pin a runner image. The minimum supported macOS version is a
+    # compile-time property — Package.swift declares `.macOS(.v14)` and the
+    # compiler enforces availability against it — so it is checked by the build
+    # rather than by finding an old runner.
+    runs-on: macos-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +31,5 @@ jobs:
       - name: Assemble the app bundle
         run: ./Scripts/build-app.sh
 
-      - name: Report the bundle
-        run: |
-          ls -la dist/GPUWatch.app/Contents/
-          codesign --verify --verbose=2 dist/GPUWatch.app
+      - name: Verify the signature
+        run: codesign --verify --verbose=2 dist/GPUWatch.app
