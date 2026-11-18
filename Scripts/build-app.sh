@@ -12,6 +12,13 @@
 #
 #   SIGN_IDENTITY="Developer ID Application: …" ./Scripts/build-app.sh
 #
+# Architecture: by default this builds for the machine it runs on. Set
+# UNIVERSAL=1 to build a universal binary covering both Apple Silicon and Intel,
+# which is what a published release should use — an arm64-only download simply
+# will not open on an Intel Mac.
+#
+#   UNIVERSAL=1 ./Scripts/build-app.sh
+#
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,10 +31,18 @@ APP="$DIST/$APP_NAME.app"
 CONFIGURATION="${CONFIGURATION:-release}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
-echo "==> Building ($CONFIGURATION)"
-swift build -c "$CONFIGURATION" --product "$APP_NAME"
+# Bash 3.2 on macOS treats an empty array expansion as an unbound variable under
+# `set -u`, hence the `${arr[@]+...}` guard rather than a bare "${arr[@]}".
+ARCH_FLAGS=()
+if [ "${UNIVERSAL:-0}" = "1" ]; then
+  ARCH_FLAGS=(--arch arm64 --arch x86_64)
+  echo "==> Universal build: arm64 + x86_64"
+fi
 
-BIN="$(swift build -c "$CONFIGURATION" --product "$APP_NAME" --show-bin-path)/$APP_NAME"
+echo "==> Building ($CONFIGURATION)"
+swift build -c "$CONFIGURATION" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --product "$APP_NAME"
+
+BIN="$(swift build -c "$CONFIGURATION" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --product "$APP_NAME" --show-bin-path)/$APP_NAME"
 if [ ! -x "$BIN" ]; then
   echo "error: built binary not found at $BIN" >&2
   exit 1
@@ -81,6 +96,7 @@ codesign --force --options runtime --timestamp=none \
 
 echo "==> Verifying"
 codesign --verify --verbose=2 "$APP" 2>&1 | sed 's/^/    /'
+echo "    architecture: $(lipo -archs "$APP/Contents/MacOS/$APP_NAME" 2>/dev/null || echo unknown)" 
 
 echo
 echo "Built $APP"
