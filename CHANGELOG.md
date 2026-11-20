@@ -2,20 +2,7 @@
 
 Notable changes per release. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
-
-### Added
-
-- **Pressure as its own axis**, kept apart from health. The query now also reads `power.draw`, `power.limit`, `utilization.memory` and `temperature.memory`, and a GPU's detail pane shows a separate `load` line under its own label. An alert raised by a threshold is prefixed `load:` so a busy card is never mistaken for a broken one.
-- Per-host **VRAM** and **power** warning thresholds, alongside the existing temperature one. All three are optional and unset by default, because a threshold not tied to what the operator expects of that host is a guess. With none set, a card at 100% utilisation stays green.
-- Warnings now carry their kind — `readability` (the driver did not answer something we asked) or `pressure` (an operator-declared threshold was crossed) — so the two can be presented, counted and alerted differently.
-
-### Notes
-
-- `temperature.memory` is unsupported on many cards, including every RTX 5090 tested. It stays `nil` and no line is drawn for it, rather than showing a dash for a reading that never existed.
-- `clocks_throttle_reasons.active` is deliberately not queried: its bitmask meanings are not stable across driver versions.
-
-## [1.0.0] — 2026-11-18
+## [1.0.0] — 2026-11-20
 
 First release.
 
@@ -36,6 +23,10 @@ SSH reachability, GPU query status and data freshness are three separate axes an
 - Demo mode with a seven-host synthetic fleet: healthy, missing GPU, replaced card, unreachable host, no `nvidia-smi`, stale data, and a GPU over threshold. No network, no notifications.
 - Atomic, schema-versioned storage. A file that cannot be read is never overwritten; it is preserved under a timestamped name and reported.
 - Troubleshooting modes: `--diagnose`, `--check <user@host>`, `--show-popover`, `--show-settings`, `--show-editor`.
+- **Pressure as its own axis**, kept apart from health. The query also reads `power.draw`, `power.limit`, `utilization.memory` and `temperature.memory`, and a GPU's detail pane shows a separate `load` line under its own label rather than recolouring the health dot. An alert raised by a threshold is prefixed `load:` so a busy card is not mistaken for a broken one.
+- Per-host **VRAM** and **power** warning thresholds, alongside the existing temperature one. All three are optional and unset by default, because a threshold not tied to what the operator expects of that host is a guess. With none set, a card at 100% utilisation stays green.
+- Warnings carry their kind — `readability` (the driver did not answer something we asked) or `pressure` (an operator-declared threshold was crossed) — so the two are counted and alerted differently.
+- An offscreen demo-video pipeline, `Scripts/make-demo-video.sh`, rendering the real interface rather than screen-capturing it.
 
 ### Security
 
@@ -50,5 +41,8 @@ SSH reachability, GPU query status and data freshness are three separate axes an
 - Notifications are unit tested but have not been observed end-to-end on a real machine.
 - macOS 14 or later. Verified on macOS 27.2.1 on Apple Silicon only.
 - The published build is **ad-hoc signed and not notarised**, so Gatekeeper will refuse a downloaded copy until the quarantine attribute is cleared. Building from source avoids this entirely.
+- `temperature.memory` is unsupported on many cards, including every RTX 5090 tested; it stays `nil` and no line is drawn for it, rather than a dash for a reading that never existed.
+- `clocks_throttle_reasons.active` is deliberately not queried: its bitmask meanings are not stable across driver versions.
+- Queue depth and per-process attribution are out of scope. They need DCGM or a scheduler API, which would mean installing something on the server and would turn this from "is the hardware I expect actually there and answering" into "is this workload healthy".
 
-[1.0.0]: https://github.com/Knoxpix/GPUWatch/releases/tag/v1.0.0
+[1.0.0]: https://github.com/siamaicorp/GPUWatch/releases/tag/v1.0.0
