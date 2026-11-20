@@ -87,7 +87,7 @@ missing กับ unknown เป็นคนละความจริง ก�
 ### build จากซอร์ส
 
 ```bash
-git clone https://github.com/Knoxpix/GPUWatch.git
+git clone https://github.com/siamaicorp/GPUWatch.git
 cd GPUWatch
 ./Scripts/build-app.sh
 open dist/GPUWatch.app

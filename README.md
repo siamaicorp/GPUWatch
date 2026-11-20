@@ -81,7 +81,7 @@ This is rendered from the real interface driving the built-in demo fleet rather 
 ### Build from source
 
 ```bash
-git clone https://github.com/Knoxpix/GPUWatch.git
+git clone https://github.com/siamaicorp/GPUWatch.git
 cd GPUWatch
 ./Scripts/build-app.sh
 open dist/GPUWatch.app
