@@ -1,84 +1,38 @@
-# GPU Watch
+# SIAM.AI GPU Watch
 
-**A macOS menu bar monitor for NVIDIA GPUs on remote servers — over SSH, with nothing installed on the server.**
+A macOS menu bar app for monitoring NVIDIA GPUs across remote servers over SSH. View GPU counts, temperature, utilisation and memory usage for multiple hosts in one panel.
+
+Uses the server's existing SSH service and `nvidia-smi`; no additional monitoring agent is required.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)](#requirements)
 [![Swift](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)](https://swift.org)
-[![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#built-with-nothing)
 
 <p align="center">
-  <img src="docs/screenshots/popover.png" width="400" alt="GPU Watch popover showing four hosts with per-GPU status dots">
+  <img src="docs/screenshots/popover.png" width="400" alt="SIAM.AI GPU Watch showing multiple hosts and individual GPU status">
 </p>
 
----
+## Features
 
-## The problem with most GPU monitors
-
-They are optimistic.
-
-When the SSH connection drops, a typical dashboard shows `0/8` in red. When the driver stops answering, it shows an empty list. When it has not polled in ten minutes, it shows the last values it had. In every one of those cases you are looking at a screen that **looks like a hardware failure but is actually a monitoring failure** — and the cost of that confusion is a 2 a.m. page for four cards that were never broken.
-
-GPU Watch is built around one rule: **it would rather say "I don't know" than show you something it cannot support.**
-
-## What that looks like in practice
-
-<p align="center">
-  <img src="docs/screenshots/unreachable-host.png" width="400" alt="Unreachable hosts showing ?/8 with hollow dots rather than 0/8 in red">
-</p>
-
-An unreachable host reads `?/8` with hollow dots — *eight slots, none confirmed* — not `0/8` in red, which reads as *eight dead GPUs*. The reason line says "Not reachable over SSH". Those are different facts and the app keeps them different.
-
-| The rule | Why it matters |
-|---|---|
-| SSH reachability, GPU query status and data freshness are **three separate axes** | One transport hiccup must never be reported as a GPU failure |
-| A failed connection marks every GPU **unknown** — never missing, never healthy | We cannot see the cards, so we have nothing to say about them |
-| A GPU is called **missing only when a complete query positively lacked its baseline UUID** | Never infer absence from a partial read |
-| Without a registered baseline, **no specific card is ever named as missing** | You cannot identify a card you have never fingerprinted |
-| Counts carried forward from an earlier check are **never counted as readable** | A stale number must not inflate the total |
-| `N/A` is never coerced to `0`, and empty or unparsable output is never healthy | "The driver did not answer" is not "the value is zero" |
-| High utilisation and high VRAM are **not failures** | Working hard is not broken |
-| A green dot means the driver **saw and answered for** that GPU — not that CUDA, NCCL or vLLM are ready | The boundary of the claim is stated in the tooltip, not implied |
-
-## Demo
-
-<p align="center">
-  <img src="docs/demo.gif" width="420" alt="Forty-one second demo: a host with a card genuinely missing, then a host that stops answering, reported two different ways">
-</p>
-
-Forty-one seconds, and it makes one point.
-
-First a card that is genuinely gone: `3/4`, with a red dot and the UUID named, on a host whose SSH is **Connected** and whose GPU query **reported 4**. Then a host that stops answering: `?/8`, eight hollow dots, SSH **Unreachable**, every GPU tagged *last known* with the explicit line *"The values below are last known, not current."*
-
-Missing and unknown are different facts. Keeping them apart is the whole design.
-
-This is rendered from the real interface driving the built-in demo fleet rather than screen-captured, so nothing else on a desktop can end up in it and the sequence is reproducible:
-
-```bash
-./Scripts/make-demo-video.sh     # dist/demo.mp4 and dist/demo.gif
-```
-
-## Screenshots
-
-| Missing GPU, with baseline | Host actions | Pinned panel |
-|---|---|---|
-| ![Missing GPU detail](docs/screenshots/missing-gpu-detail.png) | ![Host actions](docs/screenshots/host-actions.png) | ![Pinned panel](docs/screenshots/pinned-panel.png) |
-
-| Many hosts | Host editor | Settings |
-|---|---|---|
-| ![Many hosts](docs/screenshots/many-hosts.png) | ![Host editor](docs/screenshots/host-editor.png) | ![Settings](docs/screenshots/settings.png) |
+- Check multiple hosts on a schedule or refresh manually.
+- View each GPU's status, temperature, utilisation and VRAM usage.
+- Read power and memory metrics where the driver supports them.
+- Save GPU UUIDs as a baseline to identify missing or replacement cards.
+- Pin the panel on screen and enable notifications.
+- Try the interface with built-in demo data before connecting a server.
 
 ## Requirements
 
-- macOS 14 (Sonoma) or later. Apple Silicon and Intel.
-- Xcode Command Line Tools. No Xcode project, no IDE, no code signing identity needed for a local build.
-- On the servers: SSH, and `nvidia-smi` on the remote user's `PATH`.
+- macOS 14 (Sonoma) or later. The project targets Apple Silicon and Intel; see the testing limitations below.
+- Xcode Command Line Tools to build from source.
+- SSH access to each server, with `nvidia-smi` on the remote user's `PATH`.
+- A remote login shell that supports POSIX syntax, such as `sh`, `bash`, `dash` or `zsh`.
 
-**NVIDIA physical GPUs only.** MIG instances are partitions of one card and are deliberately not counted as additional GPUs. AMD is not supported and the app says so rather than guessing.
+Only physical NVIDIA GPUs are supported. MIG instances are not counted as additional cards. AMD GPUs are not supported.
 
 ## Install
 
-### Build from source
+Build from source. There is currently no prebuilt application download.
 
 ```bash
 git clone https://github.com/siamaicorp/GPUWatch.git
@@ -87,9 +41,9 @@ cd GPUWatch
 open dist/GPUWatch.app
 ```
 
-The app appears in the menu bar only — no Dock icon, no window in your way.
+The app appears in the menu bar, with no Dock icon.
 
-Builds are **ad-hoc signed** by default (`--sign -`), which is what a local build needs. Nothing in the build touches Gatekeeper or any security setting on your machine. To distribute a build to others, sign with a Developer ID and notarise:
+Local builds are ad-hoc signed (`--sign -`). For distribution, sign with a Developer ID and notarise:
 
 ```bash
 SIGN_IDENTITY="Developer ID Application: …" ./Scripts/build-app.sh
@@ -97,201 +51,169 @@ xcrun notarytool submit dist/GPUWatch.app.zip --keychain-profile <profile> --wai
 xcrun stapler staple dist/GPUWatch.app
 ```
 
-There is no prebuilt binary in the repository. Building it yourself takes about a minute, and means you are running code you can read.
-
 ## Quick start
 
-1. Launch the app. It appears in the menu bar showing `GPU Watch`.
-2. Click **Add Host**, or click **Try Demo** to see the whole thing working against a synthetic seven-host fleet — including a missing GPU, a replaced card, an unreachable host and a stale reading — before you configure anything.
-3. Fill in the SSH alias or hostname you already use. Your `~/.ssh/config`, your agent and your keys do all the work.
-4. Press **Test Connection**. It reports by stage: *SSH failed* / *SSH OK, no nvidia-smi* / *SSH OK, GPU query failed* / *success with N GPUs*. "It didn't work" is not a useful answer.
-5. Once it has read your GPUs, open the host and press **Register GPU Baseline**. That records which cards this machine should have, and from then on the app can tell you exactly which one went missing.
+1. Click **GPU Watch** in the menu bar and choose **Add Host**.
+2. Enter an SSH alias or hostname. The app uses your existing `~/.ssh/config`, SSH agent and keys.
+3. Click **Test Connection** to check SSH access and `nvidia-smi`. If a check fails, the app identifies the stage that failed.
+4. Once the GPUs are readable, choose **Register GPU Baseline**, review the UUIDs and confirm the expected cards.
+5. Set the polling interval and enable notifications if needed.
 
-Demo mode opens no connections and raises no real notifications, and its data is kept entirely separate from your configuration.
+Choose **Try Demo** to explore missing cards, replacement cards, unreachable hosts and stale data. Demo mode makes no server connections, sends no real notifications and keeps its data separate from your configuration.
 
-## How it works
+## Reading the status
 
-GPU Watch runs your **system `ssh`** — `/usr/bin/ssh`, invoked with an argument array and no shell, ever. That means:
+The app tracks SSH connectivity, GPU query results and data freshness separately. For example, a host with eight expected GPUs shows `?/8` when it cannot be reached, because its current GPU count is unknown.
 
-- Your `~/.ssh/config`, `ProxyJump`, `Match` blocks, agent and certificates all apply.
-- It stores the **path** to an identity file, never its contents. No password is ever stored.
-- It never writes to `~/.ssh/config`, never accepts a new host key, and never edits `known_hosts` for you. An unknown or changed key is reported so you can verify it in Terminal yourself.
+<p align="center">
+  <img src="docs/screenshots/unreachable-host.png" width="400" alt="An unreachable host showing ?/8 and unconfirmed GPU states">
+</p>
 
-Every host gets one fixed remote script — a constant in the source, with nothing user-supplied interpolated into it:
-
-```sh
-nvidia-smi --query-gpu=index,uuid,name,temperature.gpu,utilization.gpu,memory.used,memory.total \
-           --format=csv,noheader,nounits
-```
-
-The script is wrapped in markers and ends with `exit 0` **unconditionally**. That single detail is what makes the two axes separable: SSH succeeding while `nvidia-smi` fails is a completely different report from SSH failing, and the app can tell them apart instead of collapsing both into "host is down".
-
-## Status model
-
-Three axes, shown separately and never merged:
-
-| Axis | Values |
+| Indicator | Meaning |
 |---|---|
-| **SSH transport** | Connected · Unreachable · Auth failed · Host key · Timed out · Cancelled |
-| **GPU query** | ok · No nvidia-smi · Query failed · Empty output · Unparsable |
-| **Data freshness** | fresh · stale · unknown |
+| Green filled circle | The driver returned the GPU's core metrics in the latest check |
+| Yellow triangle | The GPU is readable, with a warning such as a temperature threshold or unsupported metric |
+| Red circle with a bar | A complete query did not find a UUID saved in the baseline |
+| Purple circle with a plus | A GPU was found whose UUID is not in the baseline |
+| Dashed circle | Status is unconfirmed: unreachable, unreadable, not yet checked or stale |
 
-Per-host: Checking · Reachable · SSH failed · GPU query failed · Degraded · Stale · Disabled · Unknown.
+Hover over an indicator for details. Shapes and accessibility labels accompany the colours.
 
-Per-GPU, colour **and shape** — because a red/green distinction is invisible to a meaningful share of engineers:
+**A green dot confirms that the driver returned GPU data.** It does not verify CUDA, NCCL, vLLM or workload readiness.
 
-| | Shape | Meaning |
+Earlier readings are labelled **last known** and are not counted as current results. `N/A` is not converted to zero.
+
+### Baseline
+
+A baseline is the set of GPU UUIDs you confirm for a host. The app tracks UUIDs because GPU indices can change after a reboot.
+
+An incomplete query or failed SSH connection does not establish that a card is missing. Without a baseline, the app cannot identify a specific missing card.
+
+The expected count does not shrink to match the detected count. After a card replacement, review the missing and newly detected UUIDs before accepting a new baseline.
+
+### Load and thresholds
+
+The **load** row displays usage metrics separately from GPU readability:
+
+- Power draw and power limit (`power.draw`, `power.limit`).
+- Memory-controller utilisation (`utilization.memory`).
+- Memory temperature (`temperature.memory`), where reported by the driver.
+
+Available readings depend on the GPU and driver. If memory temperature is unavailable, the app omits that reading.
+
+Optional thresholds can be set per host for temperature, VRAM usage and power draw as a percentage of the power limit. They are unset by default; a blank field disables that threshold. These notifications start with `load:`.
+
+High GPU or VRAM usage alone does not establish a hardware fault. Interpret it in the context of the host's workload.
+
+## Demo and screenshots
+
+<p align="center">
+  <img src="docs/demo.gif" width="420" alt="Demo data showing a missing GPU and an unreachable host">
+</p>
+
+The animation renders the app's interface using simulated data. It is not a test against a physically failed GPU. Generate it with:
+
+```bash
+./Scripts/make-demo-video.sh
+# Outputs: dist/demo.mp4 and dist/demo.gif
+```
+
+| Missing baseline GPU | Host actions | Pinned panel |
 |---|---|---|
-| 🟢 | filled circle | The driver identified it and answered its core metrics in the latest check |
-| 🟡 | triangle | Readable, but a warning: over your temperature threshold, or metrics the driver does not support |
-| 🔴 | circle with a bar | **Confirmed absent** from a complete check |
-| 🟣 | circle with a plus | Present but not in your baseline |
-| ⚪ | dashed circle | Unconfirmed: unreachable, unqueryable, never checked, or stale |
+| ![Missing GPU details](docs/screenshots/missing-gpu-detail.png) | ![Host actions](docs/screenshots/host-actions.png) | ![Pinned panel](docs/screenshots/pinned-panel.png) |
 
-Every dot has a tooltip and an accessibility label carrying the same information as the colour.
-
-## Pressure is not health
-
-Utilisation alone is a poor signal. A card can sit at 100% while doing nothing useful, and a card moving terabytes through memory can show 5% SM utilisation. So the app reads load as its own axis, kept visually and structurally apart from health:
-
-```
-GPU 1
-NVIDIA H100 80GB HBM3
-62°C   22%   4.0 GB / 32 GB          ← readability: is the driver answering
-load   ⚡ 412/575 W   🌡 79°C mem   ⇄ 88% mem   ← pressure: how hard it is working
-```
-
-The `load` line is a separate row under its own label, never a recolouring of the health dot, and alerts that come from a threshold are prefixed **`load:`** — so an operator reading a notification can tell a busy card from a broken one without opening the app.
-
-Read: `power.draw` / `power.limit`, `utilization.memory` (the memory-controller figure, usually the interesting one for inference and data movement), and `temperature.memory` where the driver reports it.
-
-> Several cards do not report HBM temperature at all — **every RTX 5090 among them, verified on real hardware**. The field comes back `N/A` and the app shows nothing for it rather than a dash, because a dash for a reading that never existed looks like a fault.
-
-### Thresholds are yours, and unset by default
-
-Optional, per host, and off until you set them: temperature (°C), VRAM fullness (%), and share of the power limit (%). Blank means no opinion.
-
-They are blank by default because a threshold not tied to what you expect of *this* host is a guess: 80% VRAM means opposite things on a shared inference box and on a workstation that should be idle. A busy card on a host with no thresholds declared stays **green** — because it is working, not ill.
-
-### What is deliberately not here
-
-`clocks_throttle_reasons.active` is not queried. It returns a bitmask whose bit meanings are not stable across driver versions, and decoding it wrongly would manufacture exactly the sort of unsupported finding this app exists to avoid. A number you can see and set a threshold on beats a reason code you cannot verify.
-
-Queue depth, per-process attribution, and "should I stop this job" are also absent — and not by oversight. That needs DCGM or a scheduler API, which means installing something on the server, and it turns the question from *"is the hardware I expect actually there and answering"* into *"is this workload healthy"*. Different product, different promise.
-
-## Baseline and expected count
-
-**UUID is the identity. Index is decoration** — it is reassigned after a reboot, so a monitor that tracks indices will invent a card failure every time you reboot.
-
-The expected GPU count is *yours*. It never shrinks to match what was found: if a card fails, the baseline keeps its UUID so the app can keep telling you it is gone. Registering a baseline always shows you the UUIDs first. Replacing a card shows you both the UUID that is gone and the one that appeared, and you decide when to accept the new set.
+| Multiple hosts | Host editor | Settings |
+|---|---|---|
+| ![Multiple hosts](docs/screenshots/many-hosts.png) | ![Host editor](docs/screenshots/host-editor.png) | ![Settings](docs/screenshots/settings.png) |
 
 ## Configuration
 
-| Setting | Default | Range |
+| Setting | Default | Options |
 |---|---|---|
-| Poll interval | 30 s | 15 / 30 / 60 / 120 s |
+| Poll interval | 30 seconds | 15 / 30 / 60 / 120 seconds |
 | Concurrent checks | 5 hosts | 1–8 |
-| Whole-check timeout | 12 s | fixed |
-| Stale window | `max(2 × interval, 60 s)` | follows the interval |
-| Notifications | off | opt-in |
+| Whole-check timeout | 12 seconds | Fixed |
+| Stale window | `max(2 × interval, 60 seconds)` | Follows the poll interval |
+| Notifications | Off | Opt-in |
 
-Polling is built so that a burst of Refresh clicks cannot multiply the work: one check at a time per host, bounded concurrency across hosts, and a generation guard so a result that arrives after you edited or deleted a host is discarded rather than applied to the wrong configuration. Quitting ends any `ssh` still running. **Opening more windows never adds a second polling loop.**
+Each host has at most one check running at a time. Repeated refreshes and additional windows do not start overlapping polling loops. Results arriving after a host is edited or deleted are discarded. Quitting terminates active SSH processes.
 
-After a sleep, everything is demoted to stale and re-checked immediately.
+After waking from sleep, the app marks earlier data as stale and starts a new check.
 
-## Notifications
+### Notifications
 
-Off by default. Permission is requested only when you turn them on.
+macOS notification permission is requested when you enable notifications. Problems and recoveries require two consecutive observations before an alert, and repeated alerts are rate limited.
 
-- A problem must be seen **twice in a row** before it is announced — a single failed poll is usually a hiccup, and an app that cries wolf gets ignored.
-- Recoveries are announced, and go through the same confirmation, so a flapping host does not alternate banners.
-- Repeat alerts are rate limited.
-- **Missing GPUs are never announced from a transport failure.** That is enforced structurally: a failed transport produces `missing == 0`, so the alert cannot be constructed.
+An SSH connection failure does not trigger a missing-GPU notification.
 
-## Privacy
+## Connections and stored data
 
-- No telemetry, no analytics, no network calls except `ssh` to the hosts you configured.
-- No password, key, or key content is ever written.
-- Everything lives in `~/Library/Application Support/GPUWatch/` (mode `0700`) as three JSON files with a schema version:
+The app invokes `/usr/bin/ssh` with an argument array. It uses `~/.ssh/config`, including `ProxyJump` and `Match`, along with the SSH agent and certificates. The probe command runs through the server's login shell.
 
-```
-config.json        hosts and settings
-baseline.json      the GPU baselines you accepted
-last-known.json    last readable values, for showing "last known" after a restart
+The app does not modify `~/.ssh/config` or `known_hosts`, or automatically accept new host keys. Verify unknown or changed keys in Terminal before connecting.
+
+The GPU query is:
+
+```sh
+nvidia-smi --query-gpu=index,uuid,name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,power.limit,temperature.memory,utilization.memory --format=csv,noheader,nounits
 ```
 
-Writes are atomic. **A file that cannot be read is never overwritten** — it is preserved under a timestamped name and the failure is reported, together with a button to open the folder. A file written by a newer version is refused with an explanation rather than misread.
+The remote script wraps the output and `nvidia-smi` exit code in markers so the app can distinguish a failed GPU query from a failed SSH connection.
 
-## Built with nothing
+There is no telemetry or analytics. The app's network connections use SSH to configured hosts. It stores the identity-file path, not passwords or private-key contents.
 
-Swift and SwiftUI plus a thin layer of AppKit for the windows. **No third-party dependencies at all** — no Electron, no web view, no backend, no Docker.
+Data is stored in `~/Library/Application Support/GPUWatch/`, with directory permissions `0700`:
 
-```
-GPUWatch.app/Contents/MacOS/GPUWatch    2.2 MB
-GPUWatch.app (whole bundle)             2.7 MB
-```
+| File | Contents |
+|---|---|
+| `config.json` | Hosts and settings |
+| `baseline.json` | Confirmed GPU baselines |
+| `last-known.json` | Last readable values, retained across restarts |
 
-## Architecture
+Files include a schema version and are written atomically. Unreadable files are preserved under timestamped names and an error is reported. Files with a newer, unsupported schema are rejected.
 
-```
-Sources/
-├── GPUWatchCore/        no UI at all; testable without SSH
-│   ├── Models/          HostConfig, GPUSample, Baseline, Status, HostReport, PollSettings
-│   ├── SSH/             SSHTarget (validation), SSHProcessRunner, RemoteProbe,
-│   │                    HostProbeRunner, SSHFailureClassifier, ConnectionTester
-│   ├── Parsing/         CSVLine, GPUFieldValue, NVIDIAQueryParser
-│   ├── Evaluation/      GPUStateEvaluator — every policy decision lives here
-│   ├── Polling/         Clock, AppModel (the single source of truth)
-│   ├── Store/           ConfigurationStore
-│   ├── Notifications/   NotificationService, UserNotificationDeliverer
-│   └── Demo/            DemoFixtures
-├── GPUWatchUI/          SwiftUI + AppKit, as a library so the snapshot harness can
-│                        render the real views rather than a reimplementation
-├── GPUWatch/            entry point
-└── GPUWatchSnapshot/    visual QA harness
-```
+## Development
 
-The parser and the state evaluator take no SSH dependency, and the runner and the clock are protocols — so the interesting behaviour is testable without a server.
+Written in Swift, SwiftUI and AppKit, with no third-party dependencies.
 
-### A note on `MenuBarExtra`
+| Location | Purpose |
+|---|---|
+| `Sources/GPUWatchCore/` | SSH, parsing, status evaluation, polling, storage and notifications |
+| `Sources/GPUWatchUI/` | SwiftUI views and AppKit windows |
+| `Sources/GPUWatch/` | Application entry point |
+| `Sources/GPUWatchSnapshot/` | UI snapshot generation |
 
-This was originally built with SwiftUI's `MenuBarExtra` and moved to an explicit `NSStatusItem`. `MenuBarExtra` exposes no handle on the item: there is no way to tell whether it was installed, to open its popover programmatically, or to report its state when something hides it — and during development the item did not appear with no way to find out why. Owning the `NSStatusItem` means `--diagnose` can distinguish "not installed" from "installed but hidden", and `--show-popover` can open the real popover for inspection.
+The menu bar uses `NSStatusItem` for status inspection and programmatic popover access. On multiple displays, the icon's position depends on which display currently owns the menu bar.
 
-Related: on a multi-display Mac the menu bar item appears on **whichever display owns the menu bar**, which is not necessarily the main one.
-
-## Testing
+### Tests and diagnostics
 
 ```bash
-swift test                    # 148 tests
-./Scripts/verify-ui.sh        # render every screen + report the menu bar item's position
+swift test
+./Scripts/verify-ui.sh
 ```
 
-Covered: quoted CSV fields · `N/A`, unsupported, malformed and empty output · identity surviving an index swap · a baseline GPU going missing · a replacement UUID appearing · expected-count mismatch · **SSH failure never becoming a missing GPU** · partial results never becoming missing · timeouts and cancellation · stale data · results arriving after an edit or delete · notification debounce, cooldown and recovery · corrupt configuration files · hosts loaded from disk actually completing their check · windows not being rebuilt under the user · every per-host action reaching the model.
+Tests cover CSV parsing, incomplete data, UUIDs and baselines, SSH failures, timeouts, stale results, notifications and unreadable configuration files. The parser and status evaluator can be tested without a server.
 
-### Visual QA
+The snapshot harness renders app views into `dist/screenshots/`. These images support visual review but do not replace testing interactions in the running app.
 
-`Sources/GPUWatchSnapshot` renders the **real view types** into `dist/screenshots/` so the interface can be reviewed from images rather than by clicking through a menu bar item. It draws the view hierarchy into a bitmap itself rather than using `CGWindowListCreateImage`, which is deprecated, needs the screen-recording permission, and returned blank surfaces intermittently.
-
-The app also carries three troubleshooting modes:
+Diagnostic commands:
 
 ```bash
-GPUWatch --diagnose                            # environment + where the menu bar item is
-GPUWatch --check user@host --expected 8        # one real check through the app's own pipeline
-GPUWatch --show-popover                        # open the real popover and stay open
+GPUWatch --diagnose
+GPUWatch --check user@host --expected 8
+GPUWatch --show-popover
 ```
 
-## Limitations
+## Limitations and testing coverage
 
-Stated plainly, because a monitor that oversells itself is the problem this project exists to fix.
-
-- **No process or MIG support.** A fixed field set only: no `--query-compute-apps`, no NVLink or ECC, and no history or graphs.
-- **AMD is unsupported by design.**
-- The **remote login shell must be POSIX** (`sh`, `bash`, `dash`, `zsh`). On `csh`/`tcsh` the markers never arrive and the app reports an unclassified SSH problem instead of pretending it succeeded.
-- **Notifications are not verified end-to-end on a real machine.** The logic is unit tested, but the permission prompt and delivered banners have not been observed.
-- Tested on **macOS 27.2.1 on Apple Silicon only**. Not yet exercised on macOS 14–26 or on Intel.
-- **Not tested against a host with a genuinely failed GPU, a rotated host key, or a mix of GPU models.** Live verification was against reachable hosts with healthy cards.
-- The Settings page does not show whether notification permission has been denied until you try to enable it.
-- Scrolling and controls in the real windows are covered by tests rather than by screenshots: `screencapture` on the development machine began returning black images, so the final round of window verification is test-based.
+- No per-process GPU usage, MIG instances, NVLink, ECC, queue depth, history or graphs.
+- Does not query `clocks_throttle_reasons.active` or recommend stopping jobs or changing scheduler settings.
+- AMD GPUs are not supported.
+- Remote `csh` and `tcsh` login shells do not support the probe script and may produce an unclassified SSH error.
+- Notification logic has unit tests, but permission prompts and delivered banners have not been verified end-to-end on a real machine. Settings does not show denied notification permission until you try to enable notifications.
+- Existing test notes report macOS 27.2.1 on Apple Silicon. macOS 14–26 and Intel have not been verified.
+- Live checks used reachable hosts with functioning cards. Physically failed GPUs, changed host keys and mixed GPU models have not been tested.
+- Previous verification of scrolling and switches relied on tests after the development machine's screen-capture tool began returning black images.
 
 ## License
 
@@ -299,10 +221,6 @@ GPL-3.0-or-later. See [LICENSE](LICENSE).
 
 Copyright © 2026 SIAM.AI Corporation.
 
-GPL was chosen deliberately: anyone may use, study and modify this, but a distributed modified version must remain open. A monitoring tool that tells you the truth about your hardware is worth keeping verifiable.
+The SIAM.AI name and logo are trademarks of SIAM.AI Corporation and are not covered by the GPL grant. Replace the branding when distributing your own build. Artwork is in `Sources/GPUWatchUI/Resources/` and `Packaging/Brand/`.
 
-The **SIAM.AI name and logo are trademarks of SIAM.AI Corporation** and are not covered by the GPL grant. If you fork this and distribute your own build, replace the brand mark — the code licence does not extend to the mark. The artwork lives in `Sources/GPUWatchUI/Resources/` and `Packaging/Brand/`.
-
----
-
-[อ่านฉบับภาษาไทย →](README.th.md)
+[อ่านฉบับภาษาไทย](README.th.md)
