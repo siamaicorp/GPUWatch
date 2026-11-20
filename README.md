@@ -40,7 +40,19 @@ One reading is not flattened, and the app does not pretend otherwise: **temperat
 
 ## Install
 
-Build from source. There is currently no prebuilt application download.
+### Download
+
+The latest build is attached to [Releases](https://github.com/siamaicorp/GPUWatch/releases). It is a universal binary covering Apple Silicon and Intel.
+
+It is **ad-hoc signed and not notarised**, so macOS will quarantine the download and Gatekeeper will refuse to open it until the flag is cleared:
+
+```bash
+xattr -d com.apple.quarantine /Applications/GPUWatch.app
+```
+
+### Build from source
+
+No Gatekeeper involvement at all, and you end up running code you can read. The project is a single Swift package with no dependencies.
 
 ```bash
 git clone https://github.com/siamaicorp/GPUWatch.git
@@ -49,7 +61,7 @@ cd GPUWatch
 open dist/GPUWatch.app
 ```
 
-The app appears in the menu bar, with no Dock icon.
+The app appears in the menu bar, with no Dock icon. For a universal binary, build with `UNIVERSAL=1 ./Scripts/build-app.sh`.
 
 Local builds are ad-hoc signed (`--sign -`). For distribution, sign with a Developer ID and notarise:
 

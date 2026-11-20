@@ -46,7 +46,19 @@
 
 ## ติดตั้ง
 
-ขณะนี้ต้อง build จากซอร์ส ยังไม่มีไฟล์แอปสำเร็จรูปให้ดาวน์โหลด
+### ดาวน์โหลด
+
+ไฟล์เวอร์ชันล่าสุดแนบไว้ที่ [Releases](https://github.com/siamaicorp/GPUWatch/releases) เป็น universal binary ที่ใช้ได้ทั้ง Apple Silicon และ Intel
+
+ไฟล์นี้**เซ็นแบบ ad-hoc และไม่ได้ทำ notarization** macOS จะติด quarantine ให้ และ Gatekeeper จะปฏิเสธไม่ให้เปิด จนกว่าจะลบ flag ออก:
+
+```bash
+xattr -d com.apple.quarantine /Applications/GPUWatch.app
+```
+
+### build จากซอร์ส
+
+ไม่ยุ่งกับ Gatekeeper เลย และได้รันโค้ดที่อ่านได้เอง โครงการเป็น Swift package เดียว ไม่มี dependency ภายนอก
 
 ```bash
 git clone https://github.com/siamaicorp/GPUWatch.git
@@ -55,7 +67,7 @@ cd GPUWatch
 open dist/GPUWatch.app
 ```
 
-เมื่อเปิดแอปจะมีรายการบนเมนูบาร์ ไม่มีไอคอนใน Dock
+เมื่อเปิดแอปจะมีรายการบนเมนูบาร์ ไม่มีไอคอนใน Dock หากต้องการ universal binary ให้ build ด้วย `UNIVERSAL=1 ./Scripts/build-app.sh`
 
 Build ในเครื่องใช้การเซ็นแบบ ad-hoc (`--sign -`) หากต้องการแจกจ่ายแอป ให้เซ็นด้วย Developer ID และทำ notarization:
 
