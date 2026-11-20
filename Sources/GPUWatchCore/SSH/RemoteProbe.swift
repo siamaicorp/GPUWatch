@@ -20,8 +20,23 @@ public enum RemoteProbe {
     public static let endMarker = "__GPUW_END__"
     public static let returnCodePrefix = "__GPUW_RC__"
 
-    /// Query fields, verified against the nvidia-smi documentation. `index` and
-    /// `uuid` identify the device; the rest are the health signals we display.
+    /// Query fields, verified against the nvidia-smi documentation and against
+    /// real hardware.
+    ///
+    /// `index` and `uuid` identify the device. The rest split into two groups
+    /// that the app keeps strictly apart:
+    ///
+    /// - **Readability** — is the driver answering at all for this card:
+    ///   `temperature.gpu`, `utilization.gpu`, `memory.used`, `memory.total`.
+    /// - **Pressure** — how hard the card is working, which says nothing about
+    ///   whether it is healthy: `power.draw`, `power.limit`,
+    ///   `temperature.memory`, `utilization.memory`.
+    ///
+    /// Deliberately absent: `clocks_throttle_reasons.active`. It returns a
+    /// bitmask whose bit meanings are not stable across driver versions, and
+    /// decoding it wrongly would produce exactly the kind of unsupported
+    /// finding this app exists to avoid. Pressure the operator can see and set
+    /// a threshold on is worth more than a throttle reason they cannot verify.
     public static let queryFields = [
         "index",
         "uuid",
@@ -29,7 +44,11 @@ public enum RemoteProbe {
         "temperature.gpu",
         "utilization.gpu",
         "memory.used",
-        "memory.total"
+        "memory.total",
+        "power.draw",
+        "power.limit",
+        "temperature.memory",
+        "utilization.memory"
     ]
 
     public static var nvidiaSMIArguments: String {

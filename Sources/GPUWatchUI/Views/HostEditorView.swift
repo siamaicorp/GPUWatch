@@ -16,6 +16,8 @@ struct HostEditorView: View {
     @State private var portText: String
     @State private var expectedText: String
     @State private var thresholdText: String
+    @State private var vramThresholdText: String
+    @State private var powerThresholdText: String
     @State private var testResult: ConnectionTestResult?
     @State private var isTesting = false
     @State private var confirmDelete = false
@@ -30,6 +32,14 @@ struct HostEditorView: View {
             initialValue: draft.temperatureWarningThreshold.map {
                 $0.rounded() == $0 ? String(Int($0)) : String($0)
             } ?? ""
+        )
+        // Stored as fractions, shown as whole percentages: an operator thinks
+        // "warn me at 90%", not at 0.9.
+        _vramThresholdText = State(
+            initialValue: draft.vramWarningFraction.map { String(Int(($0 * 100).rounded())) } ?? ""
+        )
+        _powerThresholdText = State(
+            initialValue: draft.powerWarningFraction.map { String(Int(($0 * 100).rounded())) } ?? ""
         )
     }
 
@@ -157,6 +167,35 @@ struct HostEditorView: View {
                 }
             }
 
+            HStack(alignment: .top, spacing: DS.Space.m) {
+                LabeledField(
+                    "VRAM warning (%)",
+                    help: "Optional. Warn when VRAM is this full."
+                ) {
+                    TextField("90", text: $vramThresholdText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 90)
+                }
+                LabeledField(
+                    "Power warning (%)",
+                    help: "Optional. Warn at this share of the power limit."
+                ) {
+                    TextField("95", text: $powerThresholdText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 90)
+                }
+            }
+
+            Text(
+                "The last three describe load, not health. A card at its power limit during a "
+                + "training run is working as intended — they are flagged so a busy card is not "
+                + "mistaken for a broken one, never the other way round. Leave them blank if this "
+                + "host is meant to be busy."
+            )
+            .font(DS.TextStyle.caption)
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
+
             Toggle("Enabled", isOn: $draft.enabled)
                 .toggleStyle(.switch)
                 .controlSize(.small)
@@ -245,9 +284,27 @@ struct HostEditorView: View {
         if host.identityFile?.isEmpty ?? false { host.identityFile = nil }
         host.port = Int(portText.trimmingCharacters(in: .whitespaces))
         host.expectedGPUCount = max(0, Int(expectedText.trimmingCharacters(in: .whitespaces)) ?? 0)
-        let threshold = Double(thresholdText.trimmingCharacters(in: .whitespaces))
-        host.temperatureWarningThreshold = threshold
+        host.temperatureWarningThreshold = Double(thresholdText.trimmingCharacters(in: .whitespaces))
+        // Entered as whole percentages, stored as fractions.
+        host.vramWarningFraction = percentFraction(vramThresholdText)
+        host.powerWarningFraction = percentFraction(powerThresholdText)
         return host
+    }
+
+    private func percentFraction(_ text: String) -> Double? {
+        guard let percent = Double(text.trimmingCharacters(in: .whitespaces)) else { return nil }
+        return min(max(percent / 100, 0), 1)
+    }
+
+    /// A percentage field must be either blank or a number in 1–100. Zero or a
+    /// hundred is accepted because both are meaningful as explicit choices.
+    private func invalidPercent(_ text: String, label: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        guard let value = Double(trimmed), (1...100).contains(value) else {
+            return "\(label) must be between 1 and 100, or blank to disable it"
+        }
+        return nil
     }
 
     private var validationMessage: String? {
@@ -268,6 +325,12 @@ struct HostEditorView: View {
         }
         if !thresholdText.trimmingCharacters(in: .whitespaces).isEmpty, thresholdDouble == nil {
             return "Temperature warning must be a number, or blank to disable it"
+        }
+        if let problem = invalidPercent(vramThresholdText, label: "VRAM warning") {
+            return problem
+        }
+        if let problem = invalidPercent(powerThresholdText, label: "Power warning") {
+            return problem
         }
         return nil
     }

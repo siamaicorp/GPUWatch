@@ -18,9 +18,27 @@ public struct HostConfig: Codable, Identifiable, Hashable, Sendable {
     /// How many physical GPUs the operator expects to be present.
     public var expectedGPUCount: Int
     public var enabled: Bool
+    /// Pressure thresholds. All optional, all operator-declared.
+    ///
+    /// These describe how hard the machine is being worked, not whether it is
+    /// healthy: a card sitting at its power limit during a training run is doing
+    /// exactly what it should. They exist so a busy card can be *told apart*
+    /// from an idle one at a glance, never so a busy card can be called broken.
+    ///
+    /// Each is left unset by default, because a threshold that is not tied to
+    /// what the operator expects of this host is a guess: 80% VRAM means
+    /// opposite things on a shared inference box and on a workstation that
+    /// should be idle.
+
     /// GPU temperature in degrees Celsius at or above which a readable GPU is
-    /// reported as a warning. `nil` disables the warning.
+    /// flagged. `nil` disables it.
     public var temperatureWarningThreshold: Double?
+    /// Fraction of VRAM in use, 0–1, at or above which a readable GPU is
+    /// flagged. `nil` disables it.
+    public var vramWarningFraction: Double?
+    /// Fraction of the power limit being drawn, 0–1, at or above which a
+    /// readable GPU is flagged. `nil` disables it.
+    public var powerWarningFraction: Double?
 
     public init(
         id: UUID = UUID(),
@@ -31,7 +49,9 @@ public struct HostConfig: Codable, Identifiable, Hashable, Sendable {
         identityFile: String? = nil,
         expectedGPUCount: Int = 0,
         enabled: Bool = true,
-        temperatureWarningThreshold: Double? = nil
+        temperatureWarningThreshold: Double? = nil,
+        vramWarningFraction: Double? = nil,
+        powerWarningFraction: Double? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -42,6 +62,15 @@ public struct HostConfig: Codable, Identifiable, Hashable, Sendable {
         self.expectedGPUCount = expectedGPUCount
         self.enabled = enabled
         self.temperatureWarningThreshold = temperatureWarningThreshold
+        self.vramWarningFraction = vramWarningFraction
+        self.powerWarningFraction = powerWarningFraction
+    }
+
+    /// Whether this host has asked to be told about pressure at all.
+    public var hasPressureThresholds: Bool {
+        temperatureWarningThreshold != nil
+            || vramWarningFraction != nil
+            || powerWarningFraction != nil
     }
 
     /// Name shown in the UI. Falls back to the SSH destination so a row is

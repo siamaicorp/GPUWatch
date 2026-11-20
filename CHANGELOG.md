@@ -2,6 +2,19 @@
 
 Notable changes per release. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Added
+
+- **Pressure as its own axis**, kept apart from health. The query now also reads `power.draw`, `power.limit`, `utilization.memory` and `temperature.memory`, and a GPU's detail pane shows a separate `load` line under its own label. An alert raised by a threshold is prefixed `load:` so a busy card is never mistaken for a broken one.
+- Per-host **VRAM** and **power** warning thresholds, alongside the existing temperature one. All three are optional and unset by default, because a threshold not tied to what the operator expects of that host is a guess. With none set, a card at 100% utilisation stays green.
+- Warnings now carry their kind — `readability` (the driver did not answer something we asked) or `pressure` (an operator-declared threshold was crossed) — so the two can be presented, counted and alerted differently.
+
+### Notes
+
+- `temperature.memory` is unsupported on many cards, including every RTX 5090 tested. It stays `nil` and no line is drawn for it, rather than showing a dash for a reading that never existed.
+- `clocks_throttle_reasons.active` is deliberately not queried: its bitmask meanings are not stable across driver versions.
+
 ## [1.0.0] — 2026-11-18
 
 First release.

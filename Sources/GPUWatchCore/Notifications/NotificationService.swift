@@ -193,15 +193,21 @@ public final class NotificationService: @unchecked Sendable {
                 ? "A complete check did not find them."
                 : "Not present in the latest complete check: \(uuids)"
         case let .gpuWarning(count):
-            let reasons = report.gpus
-                .compactMap { gpu -> String? in
-                    if case let .warning(reasons) = gpu.health { return reasons.first }
-                    return nil
+            let warnings = report.gpus.flatMap(\.health.warnings).prefix(2)
+            // The two kinds are labelled in the body. An alert that only said
+            // "GPU warning" would leave the operator unable to tell a card that
+            // stopped answering from one that is simply busy — which is the
+            // distinction the whole app is about.
+            let described = warnings.map { warning -> String in
+                switch warning.kind {
+                case .readability: return warning.text
+                case .pressure: return "load: \(warning.text)"
                 }
-                .prefix(2)
-                .joined(separator: "; ")
+            }
             title = "\(name): \(count) GPU warning\(count == 1 ? "" : "s")"
-            body = reasons.isEmpty ? "A configured threshold was exceeded." : reasons
+            body = described.isEmpty
+                ? "A configured threshold was exceeded."
+                : described.joined(separator: "; ")
         }
 
         lastDelivery[key] = now

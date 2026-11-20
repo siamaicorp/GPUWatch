@@ -68,7 +68,7 @@ final class NVIDIAQueryParserTests: XCTestCase {
     }
 
     func testQuotedModelNameParsesAsOneField() {
-        let output = "0, \(Fixtures.uuid(1)), \"Tesla V100, 32GB\", 41, 10, 100, 32000"
+        let output = "0, \(Fixtures.uuid(1)), \"Tesla V100, 32GB\", 41, 10, 100, 32000, 250, 700, N/A, 0"
         let parsed = NVIDIAQueryParser.parse(output)
         XCTAssertEqual(parsed.samples.count, 1)
         XCTAssertEqual(parsed.samples[0].model, "Tesla V100, 32GB")
@@ -110,7 +110,11 @@ final class NVIDIAQueryParserTests: XCTestCase {
         let parsed = NVIDIAQueryParser.parse(output)
         XCTAssertEqual(parsed.samples.count, 1)
         XCTAssertEqual(parsed.skipped.count, 1)
-        XCTAssertTrue(parsed.warnings.contains { $0.contains("expected 7 fields") })
+        // Derived from the parser's own constant so adding a query field cannot
+        // silently make this assertion meaningless.
+        XCTAssertTrue(parsed.warnings.contains {
+            $0.contains("expected \(NVIDIAQueryParser.expectedFieldCount) fields")
+        })
     }
 
     func testEntirelyUnusableOutput() {
@@ -155,7 +159,7 @@ final class NVIDIAQueryParserTests: XCTestCase {
     }
 
     func testRowWithoutUUIDIsRecordedAsUnidentifiable() {
-        let output = "0, N/A, NVIDIA H100, 60, 10, 100, 81920"
+        let output = "0, N/A, NVIDIA H100, 60, 10, 100, 81920, 250, 700, N/A, 0"
         let parsed = NVIDIAQueryParser.parse(output)
         XCTAssertEqual(parsed.samples.count, 1, "the GPU was reported, just not identified")
         XCTAssertEqual(parsed.samplesWithoutUUID, 1)

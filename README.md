@@ -40,6 +40,24 @@ An unreachable host reads `?/8` with hollow dots — *eight slots, none confirme
 | High utilisation and high VRAM are **not failures** | Working hard is not broken |
 | A green dot means the driver **saw and answered for** that GPU — not that CUDA, NCCL or vLLM are ready | The boundary of the claim is stated in the tooltip, not implied |
 
+## Demo
+
+<p align="center">
+  <img src="docs/demo.gif" width="420" alt="Forty-one second demo: a host with a card genuinely missing, then a host that stops answering, reported two different ways">
+</p>
+
+Forty-one seconds, and it makes one point.
+
+First a card that is genuinely gone: `3/4`, with a red dot and the UUID named, on a host whose SSH is **Connected** and whose GPU query **reported 4**. Then a host that stops answering: `?/8`, eight hollow dots, SSH **Unreachable**, every GPU tagged *last known* with the explicit line *"The values below are last known, not current."*
+
+Missing and unknown are different facts. Keeping them apart is the whole design.
+
+This is rendered from the real interface driving the built-in demo fleet rather than screen-captured, so nothing else on a desktop can end up in it and the sequence is reproducible:
+
+```bash
+./Scripts/make-demo-video.sh     # dist/demo.mp4 and dist/demo.gif
+```
+
 ## Screenshots
 
 | Missing GPU, with baseline | Host actions | Pinned panel |
@@ -131,6 +149,35 @@ Per-GPU, colour **and shape** — because a red/green distinction is invisible t
 | ⚪ | dashed circle | Unconfirmed: unreachable, unqueryable, never checked, or stale |
 
 Every dot has a tooltip and an accessibility label carrying the same information as the colour.
+
+## Pressure is not health
+
+Utilisation alone is a poor signal. A card can sit at 100% while doing nothing useful, and a card moving terabytes through memory can show 5% SM utilisation. So the app reads load as its own axis, kept visually and structurally apart from health:
+
+```
+GPU 1
+NVIDIA H100 80GB HBM3
+62°C   22%   4.0 GB / 32 GB          ← readability: is the driver answering
+load   ⚡ 412/575 W   🌡 79°C mem   ⇄ 88% mem   ← pressure: how hard it is working
+```
+
+The `load` line is a separate row under its own label, never a recolouring of the health dot, and alerts that come from a threshold are prefixed **`load:`** — so an operator reading a notification can tell a busy card from a broken one without opening the app.
+
+Read: `power.draw` / `power.limit`, `utilization.memory` (the memory-controller figure, usually the interesting one for inference and data movement), and `temperature.memory` where the driver reports it.
+
+> Several cards do not report HBM temperature at all — **every RTX 5090 among them, verified on real hardware**. The field comes back `N/A` and the app shows nothing for it rather than a dash, because a dash for a reading that never existed looks like a fault.
+
+### Thresholds are yours, and unset by default
+
+Optional, per host, and off until you set them: temperature (°C), VRAM fullness (%), and share of the power limit (%). Blank means no opinion.
+
+They are blank by default because a threshold not tied to what you expect of *this* host is a guess: 80% VRAM means opposite things on a shared inference box and on a workstation that should be idle. A busy card on a host with no thresholds declared stays **green** — because it is working, not ill.
+
+### What is deliberately not here
+
+`clocks_throttle_reasons.active` is not queried. It returns a bitmask whose bit meanings are not stable across driver versions, and decoding it wrongly would manufacture exactly the sort of unsupported finding this app exists to avoid. A number you can see and set a threshold on beats a reason code you cannot verify.
+
+Queue depth, per-process attribution, and "should I stop this job" are also absent — and not by oversight. That needs DCGM or a scheduler API, which means installing something on the server, and it turns the question from *"is the hardware I expect actually there and answering"* into *"is this workload healthy"*. Different product, different promise.
 
 ## Baseline and expected count
 

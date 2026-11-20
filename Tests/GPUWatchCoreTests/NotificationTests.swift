@@ -181,11 +181,18 @@ final class NotificationServiceTests: XCTestCase {
         let service = NotificationService(options: .init(confirmationsRequired: 1))
         let hot = report(
             counts: GPUCounts(expected: 1, readable: 1, warnings: 1),
-            gpus: [GPUReport(id: "g", health: .warning(reasons: ["84°C above threshold"]), isLiveData: true)]
+            gpus: [GPUReport(
+                id: "g",
+                health: .warning(warnings: [GPUWarning(kind: .pressure, text: "84°C above threshold")]),
+                isLiveData: true
+            )]
         )
         let outgoing = service.evaluate(reports: [hot], now: now)
         XCTAssertEqual(outgoing.count, 1)
         XCTAssertTrue(outgoing[0].body.contains("84°C"))
+        // Labelled as load, so the operator can tell a busy card from a broken
+        // one without opening the app.
+        XCTAssertTrue(outgoing[0].body.contains("load:"))
     }
 
     func testCancelledChecksDoNotAlert() {

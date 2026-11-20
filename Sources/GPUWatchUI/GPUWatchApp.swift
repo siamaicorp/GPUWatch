@@ -220,7 +220,11 @@ enum Diagnostics {
             report(["gpus found: \(count)"])
         }
         if !result.samples.isEmpty {
-            report(["", "index  uuid                                            temp   util   vram          model"])
+            report([
+                "",
+                "index  uuid                                            temp   util   vram          "
+                    + "power      memtemp memutil  model"
+            ])
             for sample in result.samples {
                 let index = sample.index.map(String.init) ?? "?"
                 let uuid = sample.uuid ?? "(no uuid)"
@@ -228,15 +232,31 @@ enum Diagnostics {
                 let utilization = sample.utilizationPercent.map { "\(Int($0))%" } ?? "N/A"
                 let memory: String
                 if let used = sample.memoryUsedMiB, let total = sample.memoryTotalMiB {
-                    memory = "\(Int(used))/\(Int(total)) MiB"
+                    memory = "\(Int(used))/\(Int(total))"
                 } else {
                     memory = "N/A"
                 }
+                // Pressure is printed on its own columns so it is obvious at a
+                // glance which readings are about health and which are about load.
+                let power: String
+                if let draw = sample.powerDrawWatts, let limit = sample.powerLimitWatts {
+                    power = "\(Int(draw))/\(Int(limit))W"
+                } else {
+                    power = "N/A"
+                }
+                let memoryTemperature = sample.memoryTemperatureCelsius
+                    .map { "\(Int($0))C" } ?? "N/A"
+                let memoryUtilization = sample.memoryUtilizationPercent
+                    .map { "\(Int($0))%" } ?? "N/A"
+
                 report(["\(index.padding(toLength: 6, withPad: " ", startingAt: 0))"
                     + " \(uuid.padding(toLength: 46, withPad: " ", startingAt: 0))"
                     + " \(temperature.padding(toLength: 6, withPad: " ", startingAt: 0))"
                     + " \(utilization.padding(toLength: 6, withPad: " ", startingAt: 0))"
                     + " \(memory.padding(toLength: 13, withPad: " ", startingAt: 0))"
+                    + " \(power.padding(toLength: 10, withPad: " ", startingAt: 0))"
+                    + " \(memoryTemperature.padding(toLength: 7, withPad: " ", startingAt: 0))"
+                    + " \(memoryUtilization.padding(toLength: 8, withPad: " ", startingAt: 0))"
                     + " \(sample.model ?? "—")"])
             }
         }

@@ -49,7 +49,7 @@ public final class AppCoordinator {
         syncSettings()
     }
 
-    func stop() {
+    public func stop() {
         ui.pendingDeleteHostID = nil
         ui.pendingBaselineHostID = nil
         panelController.close()

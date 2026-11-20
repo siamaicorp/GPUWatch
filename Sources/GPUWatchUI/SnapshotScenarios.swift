@@ -33,6 +33,20 @@ public enum SnapshotScenarios {
         }
     }
 
+    /// Size of the popover as rendered by the harness.
+    public static var popoverSize: CGSize {
+        CGSize(width: DS.popoverWidth, height: 620)
+    }
+
+    /// The popover, for the harness to render frame by frame.
+    ///
+    /// A narrow accessor rather than exposing `PopoverRootView` itself: only the
+    /// QA harness needs to reach the view layer directly.
+    @MainActor
+    public static func popoverView(coordinator: AppCoordinator) -> AnyView {
+        AnyView(PopoverRootView(coordinator: coordinator))
+    }
+
     /// A coordinator backed by a throwaway store, already in demo mode.
     @MainActor
     public static func makeDemoCoordinator(

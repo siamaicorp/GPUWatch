@@ -171,12 +171,73 @@ public enum HostDisplayState: Equatable, Sendable {
 
 // MARK: - Per-GPU verdict
 
+/// Why a readable GPU is flagged.
+///
+/// The two kinds are kept apart on purpose. A *readability* problem means the
+/// driver did not answer a question we asked, which is a hardware or driver
+/// concern. A *pressure* problem means the card is working hard, which is a
+/// statement about the workload and not about the card. Folding them together
+/// would let "busy" look like "broken", which is the mistake this app exists to
+/// prevent.
+public struct GPUWarning: Equatable, Sendable {
+    public enum Kind: Equatable, Sendable {
+        /// The driver did not report something we asked for.
+        case readability
+        /// An operator-declared threshold was crossed.
+        case pressure
+    }
+
+    public var kind: Kind
+    public var text: String
+
+    public init(kind: Kind, text: String) {
+        self.kind = kind
+        self.text = text
+    }
+}
+
+/// The load readings for one GPU, kept separate from its health.
+public struct GPUPressure: Equatable, Sendable {
+    public var powerDrawWatts: Double?
+    public var powerLimitWatts: Double?
+    /// HBM temperature, where the driver reports it. Unsupported on many cards,
+    /// including consumer ones, so absence here is ordinary.
+    public var memoryTemperatureCelsius: Double?
+    public var memoryUtilizationPercent: Double?
+    public var memoryUsedMiB: Double?
+    public var memoryTotalMiB: Double?
+
+    public init(
+        powerDrawWatts: Double? = nil,
+        powerLimitWatts: Double? = nil,
+        memoryTemperatureCelsius: Double? = nil,
+        memoryUtilizationPercent: Double? = nil,
+        memoryUsedMiB: Double? = nil,
+        memoryTotalMiB: Double? = nil
+    ) {
+        self.powerDrawWatts = powerDrawWatts
+        self.powerLimitWatts = powerLimitWatts
+        self.memoryTemperatureCelsius = memoryTemperatureCelsius
+        self.memoryUtilizationPercent = memoryUtilizationPercent
+        self.memoryUsedMiB = memoryUsedMiB
+        self.memoryTotalMiB = memoryTotalMiB
+    }
+
+    /// Whether any pressure reading came back at all. A card that reports
+    /// nothing here should show no pressure line rather than a row of dashes.
+    public var hasAnyReading: Bool {
+        powerDrawWatts != nil
+            || memoryTemperatureCelsius != nil
+            || memoryUtilizationPercent != nil
+    }
+}
+
 public enum GPUHealth: Equatable, Sendable {
     /// The driver identified it and answered the core metrics in the latest
     /// complete check.
     case healthy
-    /// Identified and readable, but a configured threshold is exceeded.
-    case warning(reasons: [String])
+    /// Identified and readable, but something is worth flagging.
+    case warning(warnings: [GPUWarning])
     /// Confirmed absent from a complete query, or we hold GPU-specific evidence
     /// that reading it failed.
     case missing(reason: String)
@@ -186,6 +247,11 @@ public enum GPUHealth: Equatable, Sendable {
     case unknown(reason: String)
 
     public var isHealthy: Bool { self == .healthy }
+
+    public var warnings: [GPUWarning] {
+        if case let .warning(warnings) = self { return warnings }
+        return []
+    }
 }
 
 /// One GPU as presented to the user, including whether its numbers are live.
@@ -201,6 +267,9 @@ public struct GPUReport: Identifiable, Equatable, Sendable {
     public var utilizationPercent: Double?
     public var memoryUsedMiB: Double?
     public var memoryTotalMiB: Double?
+    /// Load readings, kept apart from `health` so a busy card is never read as
+    /// a broken one.
+    public var pressure: GPUPressure?
     public var health: GPUHealth
     /// `false` when the values shown were carried forward from an earlier
     /// successful check rather than read now.
@@ -215,6 +284,7 @@ public struct GPUReport: Identifiable, Equatable, Sendable {
         utilizationPercent: Double? = nil,
         memoryUsedMiB: Double? = nil,
         memoryTotalMiB: Double? = nil,
+        pressure: GPUPressure? = nil,
         health: GPUHealth,
         isLiveData: Bool
     ) {
@@ -226,6 +296,7 @@ public struct GPUReport: Identifiable, Equatable, Sendable {
         self.utilizationPercent = utilizationPercent
         self.memoryUsedMiB = memoryUsedMiB
         self.memoryTotalMiB = memoryTotalMiB
+        self.pressure = pressure
         self.health = health
         self.isLiveData = isLiveData
     }
@@ -243,10 +314,22 @@ public struct GPUReport: Identifiable, Equatable, Sendable {
     public var reasonText: String? {
         switch health {
         case .healthy: return nil
-        case let .warning(reasons): return reasons.joined(separator: ", ")
+        case let .warning(warnings): return warnings.map(\.text).joined(separator: ", ")
         case let .missing(reason): return reason
         case .unexpected: return "Not in baseline"
         case let .unknown(reason): return reason
         }
+    }
+
+    /// Only the reasons that are about the driver failing to answer. These are
+    /// the ones that mean something is wrong with the card or its driver.
+    public var readabilityWarnings: [GPUWarning] {
+        health.warnings.filter { $0.kind == .readability }
+    }
+
+    /// Only the reasons that are about load. These describe the workload, not
+    /// the hardware.
+    public var pressureWarnings: [GPUWarning] {
+        health.warnings.filter { $0.kind == .pressure }
     }
 }

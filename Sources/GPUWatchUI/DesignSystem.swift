@@ -160,6 +160,20 @@ enum DS {
         return min(max(used / total, 0), 1)
     }
 
+    static func power(draw: Double?, limit: Double?) -> String {
+        guard let draw else { return "—" }
+        let drawn = Int(draw.rounded())
+        guard let limit else { return "\(drawn) W" }
+        return "\(drawn)/\(Int(limit.rounded())) W"
+    }
+
+    /// Percentage of the power limit being drawn, or `nil` when the card does
+    /// not report a limit.
+    static func powerPercent(draw: Double?, limit: Double?) -> String? {
+        guard let draw, let limit, limit > 0 else { return nil }
+        return "\(Int((draw / limit * 100).rounded()))%"
+    }
+
     private static func gibibytes(_ mebibytes: Double) -> String {
         let gib = mebibytes / 1024
         return gib >= 10 ? String(format: "%.0f GB", gib) : String(format: "%.1f GB", gib)

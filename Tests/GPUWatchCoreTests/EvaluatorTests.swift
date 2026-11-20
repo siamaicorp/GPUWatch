@@ -120,7 +120,8 @@ final class GPUStateEvaluatorTests: XCTestCase {
 
     func testPartialQueryLeavesUnconfirmedGPUsUnknownNotMissing() {
         let host = Fixtures.host(expected: 3)
-        let partial = "0, \(Fixtures.uuid(1)), NVIDIA H100, 60, 10, 100, 81920\nthis row is broken"
+        let partial = "0, \(Fixtures.uuid(1)), NVIDIA H100, 60, 10, 100, 81920, "
+            + "250, 700, 68, 35\nthis row is broken"
         let parsed = NVIDIAQueryParser.parse(partial)
         let probe = HostProbeResult(
             ssh: .ok,
@@ -335,10 +336,12 @@ final class GPUStateEvaluatorTests: XCTestCase {
 
         XCTAssertEqual(report.counts.warnings, 1)
         XCTAssertEqual(report.counts.readable, 1, "a hot GPU is still readable")
-        guard case let .warning(reasons) = report.gpus[0].health else {
+        guard case let .warning(warnings) = report.gpus[0].health else {
             return XCTFail("expected a warning")
         }
-        XCTAssertTrue(reasons.contains { $0.contains("84") })
+        XCTAssertTrue(warnings.contains { $0.text.contains("84") })
+        // Heat is a statement about load, not about the card being unwell.
+        XCTAssertEqual(warnings.map(\.kind), [.pressure])
     }
 
     func testHighUtilizationAndVRAMAreNotFailures() {

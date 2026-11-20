@@ -187,7 +187,9 @@ enum Fixtures {
         identityFile: String? = nil,
         expected: Int = 4,
         enabled: Bool = true,
-        temperatureThreshold: Double? = nil
+        temperatureThreshold: Double? = nil,
+        vramThreshold: Double? = nil,
+        powerThreshold: Double? = nil
     ) -> HostConfig {
         HostConfig(
             id: id,
@@ -198,7 +200,9 @@ enum Fixtures {
             identityFile: identityFile,
             expectedGPUCount: expected,
             enabled: enabled,
-            temperatureWarningThreshold: temperatureThreshold
+            temperatureWarningThreshold: temperatureThreshold,
+            vramWarningFraction: vramThreshold,
+            powerWarningFraction: powerThreshold
         )
     }
 
@@ -206,6 +210,10 @@ enum Fixtures {
         String(format: "GPU-%08x-0000-0000-0000-000000000000", seed)
     }
 
+    /// A full `nvidia-smi` row: the seven readability fields followed by the
+    /// four pressure fields, in `RemoteProbe.queryFields` order. A row with the
+    /// wrong count is rejected outright by the parser, so this has to stay in
+    /// step with that list.
     static func csvRow(
         index: Int,
         uuid: String,
@@ -213,9 +221,16 @@ enum Fixtures {
         temperature: String = "60",
         utilization: String = "10",
         memoryUsed: String = "1024",
-        memoryTotal: String = "81920"
+        memoryTotal: String = "81920",
+        powerDraw: String = "250",
+        powerLimit: String = "700",
+        memoryTemperature: String = "68",
+        memoryUtilization: String = "35"
     ) -> String {
-        "\(index), \(uuid), \(name), \(temperature), \(utilization), \(memoryUsed), \(memoryTotal)"
+        [
+            "\(index)", uuid, name, temperature, utilization, memoryUsed, memoryTotal,
+            powerDraw, powerLimit, memoryTemperature, memoryUtilization
+        ].joined(separator: ", ")
     }
 
     /// Wraps `nvidia-smi` rows in the envelope the remote script produces.

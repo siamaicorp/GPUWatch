@@ -240,6 +240,7 @@ public struct GPUStateEvaluator: Sendable {
                     utilizationPercent: sample.utilizationPercent,
                     memoryUsedMiB: sample.memoryUsedMiB,
                     memoryTotalMiB: sample.memoryTotalMiB,
+                    pressure: pressureFor(sample),
                     health: health,
                     isLiveData: true
                 )
@@ -342,29 +343,57 @@ public struct GPUStateEvaluator: Sendable {
         baseline: HostBaseline?,
         extraUUIDs: Set<String>
     ) -> GPUHealth {
-        var reasons: [String] = []
+        var warnings: [GPUWarning] = []
 
+        // ---- Readability: the driver did not answer something we asked ------
+        // These are the only warnings that are about the card or its driver.
         if !sample.hasIdentity {
-            reasons.append("driver reported no UUID")
+            warnings.append(GPUWarning(kind: .readability, text: "driver reported no UUID"))
         }
         if !sample.hasCoreMetrics {
             var missingMetrics: [String] = []
             if sample.temperatureCelsius == nil { missingMetrics.append("temperature") }
             if sample.utilizationPercent == nil { missingMetrics.append("utilization") }
             if sample.memoryTotalMiB == nil { missingMetrics.append("memory total") }
-            reasons.append("no \(missingMetrics.joined(separator: "/")) reported")
+            warnings.append(GPUWarning(
+                kind: .readability,
+                text: "no \(missingMetrics.joined(separator: "/")) reported"
+            ))
         }
 
+        // ---- Pressure: an operator-declared threshold was crossed -----------
+        // These say the card is working hard. They never say it is unwell, and
+        // they are only reported at all if the operator asked for them.
         if let threshold = host.temperatureWarningThreshold,
            let temperature = sample.temperatureCelsius,
            temperature >= threshold {
-            reasons.append(
-                "\(format(temperature))°C at or above the \(format(threshold))°C threshold"
-            )
+            warnings.append(GPUWarning(
+                kind: .pressure,
+                text: "\(format(temperature))°C at or above the \(format(threshold))°C threshold"
+            ))
         }
 
-        if !reasons.isEmpty {
-            return .warning(reasons: reasons)
+        if let threshold = host.vramWarningFraction,
+           let fraction = sample.memoryUtilizationFraction,
+           fraction >= threshold {
+            warnings.append(GPUWarning(
+                kind: .pressure,
+                text: "VRAM \(percent(fraction)) full at or above the \(percent(threshold)) threshold"
+            ))
+        }
+
+        if let threshold = host.powerWarningFraction,
+           let fraction = sample.powerFraction,
+           fraction >= threshold {
+            warnings.append(GPUWarning(
+                kind: .pressure,
+                text: "drawing \(percent(fraction)) of its power limit at or above the "
+                    + "\(percent(threshold)) threshold"
+            ))
+        }
+
+        if !warnings.isEmpty {
+            return .warning(warnings: warnings)
         }
 
         if let uuid = sample.uuid, baseline != nil, extraUUIDs.contains(uuid) {
@@ -374,7 +403,26 @@ public struct GPUStateEvaluator: Sendable {
         return .healthy
     }
 
+    private func percent(_ fraction: Double) -> String {
+        "\(Int((fraction * 100).rounded()))%"
+    }
+
     // MARK: - Helpers
+
+    /// Load readings for one GPU, or `nil` when the driver reported none of
+    /// them — in which case the detail pane shows no pressure line at all
+    /// rather than a row of dashes for values the card never had.
+    private func pressureFor(_ sample: GPUSample) -> GPUPressure? {
+        let pressure = GPUPressure(
+            powerDrawWatts: sample.powerDrawWatts,
+            powerLimitWatts: sample.powerLimitWatts,
+            memoryTemperatureCelsius: sample.memoryTemperatureCelsius,
+            memoryUtilizationPercent: sample.memoryUtilizationPercent,
+            memoryUsedMiB: sample.memoryUsedMiB,
+            memoryTotalMiB: sample.memoryTotalMiB
+        )
+        return pressure.hasAnyReading ? pressure : nil
+    }
 
     /// The user's expectation wins over anything the driver reported. A baseline
     /// freezes the count the user accepted; otherwise the host's own field is

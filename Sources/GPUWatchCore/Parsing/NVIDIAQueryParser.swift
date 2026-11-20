@@ -91,9 +91,11 @@ public struct ParsedGPUQuery: Equatable, Sendable {
 /// Turns `nvidia-smi --format=csv,noheader,nounits` output into samples.
 ///
 /// Field order matches `RemoteProbe.queryFields`:
-/// `index, uuid, name, temperature.gpu, utilization.gpu, memory.used, memory.total`
+/// `index, uuid, name, temperature.gpu, utilization.gpu, memory.used,
+/// memory.total, power.draw, power.limit, temperature.memory,
+/// utilization.memory`
 public enum NVIDIAQueryParser {
-    public static let expectedFieldCount = 7
+    public static let expectedFieldCount = 11
 
     public static func parse(_ output: String) -> ParsedGPUQuery {
         var samples: [GPUSample] = []
@@ -152,7 +154,11 @@ public enum NVIDIAQueryParser {
                 temperatureCelsius: GPUFieldValue.double(fields[3]),
                 utilizationPercent: GPUFieldValue.double(fields[4]),
                 memoryUsedMiB: GPUFieldValue.double(fields[5]),
-                memoryTotalMiB: GPUFieldValue.double(fields[6])
+                memoryTotalMiB: GPUFieldValue.double(fields[6]),
+                powerDrawWatts: GPUFieldValue.double(fields[7]),
+                powerLimitWatts: GPUFieldValue.double(fields[8]),
+                memoryTemperatureCelsius: GPUFieldValue.double(fields[9]),
+                memoryUtilizationPercent: GPUFieldValue.double(fields[10])
             )
 
             if let uuid {

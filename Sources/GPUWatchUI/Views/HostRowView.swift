@@ -284,8 +284,37 @@ struct GPUDetailRow: View {
                 tint: tint
             )
 
-            if let reason = gpu.reasonText {
+            // Problems the driver has answering for this card.
+            ForEach(gpu.readabilityWarnings, id: \.text) { warning in
+                Text(warning.text)
+                    .font(DS.TextStyle.caption)
+                    .foregroundStyle(tint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            pressureRow
+
+            // Problems of load. Prefixed so the two can never be read as the
+            // same kind of statement.
+            ForEach(gpu.pressureWarnings, id: \.text) { warning in
+                Text("load: \(warning.text)")
+                    .font(DS.TextStyle.caption)
+                    .foregroundStyle(tint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if case let .missing(reason) = gpu.health {
                 Text(reason)
+                    .font(DS.TextStyle.caption)
+                    .foregroundStyle(tint)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if case let .unknown(reason) = gpu.health {
+                Text(reason)
+                    .font(DS.TextStyle.caption)
+                    .foregroundStyle(tint)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if case .unexpected = gpu.health {
+                Text("Not in baseline")
                     .font(DS.TextStyle.caption)
                     .foregroundStyle(tint)
                     .fixedSize(horizontal: false, vertical: true)
@@ -294,6 +323,54 @@ struct GPUDetailRow: View {
         .padding(.vertical, DS.Space.xs)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// How hard the card is working, on its own line and under its own label.
+    ///
+    /// Shown only when the driver actually reported something. Several cards —
+    /// including consumer ones — do not report HBM temperature at all, and a row
+    /// of dashes for values the hardware never had would look like a fault.
+    @ViewBuilder
+    private var pressureRow: some View {
+        if let pressure = gpu.pressure, pressure.hasAnyReading {
+            HStack(spacing: DS.Space.s) {
+                Text("load")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 30, alignment: .leading)
+
+                HStack(spacing: DS.Space.m) {
+                    if pressure.powerDrawWatts != nil {
+                        reading("bolt", DS.power(
+                            draw: pressure.powerDrawWatts, limit: pressure.powerLimitWatts
+                        ))
+                    }
+                    if let memoryTemperature = pressure.memoryTemperatureCelsius {
+                        reading("thermometer.sun", DS.temperature(memoryTemperature) + " mem")
+                    }
+                    if let memoryUtilization = pressure.memoryUtilizationPercent {
+                        reading("arrow.left.arrow.right", DS.percent(memoryUtilization) + " mem")
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(pressureAccessibilityLabel(pressure))
+        }
+    }
+
+    private func pressureAccessibilityLabel(_ pressure: GPUPressure) -> String {
+        var parts = ["Load"]
+        if pressure.powerDrawWatts != nil {
+            parts.append("power \(DS.power(draw: pressure.powerDrawWatts, limit: pressure.powerLimitWatts))")
+        }
+        if let memoryTemperature = pressure.memoryTemperatureCelsius {
+            parts.append("memory temperature \(DS.temperature(memoryTemperature))")
+        }
+        if let memoryUtilization = pressure.memoryUtilizationPercent {
+            parts.append("memory utilisation \(DS.percent(memoryUtilization))")
+        }
+        parts.append("this describes the workload, not the card's health")
+        return parts.joined(separator: ", ")
     }
 
     private func reading(_ symbol: String, _ value: String) -> some View {
@@ -323,6 +400,9 @@ struct GPUDetailRow: View {
         parts.append(DS.temperature(gpu.temperatureCelsius))
         parts.append("\(DS.percent(gpu.utilizationPercent)) utilisation")
         parts.append("\(DS.memory(used: gpu.memoryUsedMiB, total: gpu.memoryTotalMiB)) VRAM")
+        if let pressure = gpu.pressure, pressure.hasAnyReading {
+            parts.append(pressureAccessibilityLabel(pressure))
+        }
         if !gpu.isLiveData { parts.append("last known, not current") }
         if let reason = gpu.reasonText { parts.append(reason) }
         return parts.joined(separator: ", ")
