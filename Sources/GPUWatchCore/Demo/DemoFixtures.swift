@@ -25,8 +25,8 @@ public enum DemoFixtures {
         /// SSH fails now; a successful reading three minutes earlier is carried
         /// forward as last-known data.
         case unreachable
-        /// SSH works, the driver is not installed.
-        case noNvidiaSMI
+        /// SSH works, but neither supported GPU tool is installed.
+        case noGPUTool
         /// Read twenty minutes ago, then demoted to stale, as after a wake.
         case stale
         /// All GPUs readable, with one above the host's warning threshold.
@@ -99,7 +99,7 @@ public enum DemoFixtures {
                     enabled: true, temperatureWarningThreshold: nil
                 ),
                 baseline: uuids(seed: 50, count: 4),
-                behavior: .noNvidiaSMI
+                behavior: .noGPUTool
             ),
             Entry(
                 config: HostConfig(
@@ -122,6 +122,20 @@ public enum DemoFixtures {
                 ),
                 baseline: uuids(seed: 70, count: 3),
                 behavior: .hotGPU
+            ),
+            Entry(
+                config: HostConfig(
+                    id: id(8), displayName: "MI300X-06",
+                    destination: "mi300x-06.demo.invalid",
+                    username: "siamai", expectedGPUCount: 8,
+                    enabled: true, vendor: .amd,
+                    temperatureWarningThreshold: 90
+                ),
+                // No baseline, the state a newly added host starts in. It also
+                // keeps the demo honest about AMD identity: these cards report a
+                // GUID, so a baseline here would be a list of invented ones.
+                baseline: nil,
+                behavior: .healthy
             )
         ]
     }
@@ -226,7 +240,7 @@ public enum DemoFixtures {
             }
             return evaluate(
                 host: host, baseline: baseline,
-                probe: successProbe(rows: rows, at: now),
+                probe: successProbe(for: host, rows: rows, at: now),
                 previous: nil, evaluator: evaluator, settings: settings, now: now
             )
 
@@ -256,7 +270,7 @@ public enum DemoFixtures {
             }
             return evaluate(
                 host: host, baseline: baseline,
-                probe: successProbe(rows: rows, at: now),
+                probe: successProbe(for: host, rows: rows, at: now),
                 previous: nil, evaluator: evaluator, settings: settings, now: now
             )
 
@@ -273,7 +287,7 @@ public enum DemoFixtures {
             }
             let previous = evaluate(
                 host: host, baseline: baseline,
-                probe: successProbe(rows: rows, at: earlier),
+                probe: successProbe(for: host, rows: rows, at: earlier),
                 previous: nil, evaluator: evaluator, settings: settings, now: earlier
             )
             return evaluator.evaluate(
@@ -297,15 +311,18 @@ public enum DemoFixtures {
                 now: now
             )
 
-        case .noNvidiaSMI:
+        case .noGPUTool:
             return evaluator.evaluate(
                 host: host,
                 baseline: baseline,
                 probe: HostProbeResult(
                     ssh: .ok,
-                    query: .failed(reason: .nvidiaSMINotFound, detail: "nvidia-smi not on PATH"),
+                    query: .failed(
+                        reason: .gpuToolNotFound,
+                        detail: "neither nvidia-smi nor rocm-smi is on PATH"
+                    ),
                     attemptedAt: now,
-                    queryDetail: "nvidia-smi not found",
+                    queryDetail: "no supported GPU tool found",
                     transportConfirmed: true
                 ),
                 previous: nil,
@@ -326,7 +343,7 @@ public enum DemoFixtures {
             }
             var report = evaluate(
                 host: host, baseline: baseline,
-                probe: successProbe(rows: rows, at: earlier),
+                probe: successProbe(for: host, rows: rows, at: earlier),
                 previous: nil, evaluator: evaluator, settings: settings, now: earlier
             )
             report.lastSuccessfulAt = earlier
@@ -354,9 +371,19 @@ public enum DemoFixtures {
         )
     }
 
-    private static func successProbe(rows: [GPUCSVRow], at date: Date) -> HostProbeResult {
-        let output = rows.map(\.csvLine).joined(separator: "\n")
-        let parsed = NVIDIAQueryParser.parse(output)
+    private static func successProbe(
+        for host: HostConfig,
+        rows: [GPUCSVRow],
+        at date: Date
+    ) -> HostProbeResult {
+        let parsed: ParsedGPUQuery
+        if host.vendor == .amd {
+            let output = ([rocmHeader] + rows.map(\.rocmLine)).joined(separator: "\n")
+            parsed = ROCmSMIParser.parse(output)
+        } else {
+            let output = rows.map(\.csvLine).joined(separator: "\n")
+            parsed = NVIDIAQueryParser.parse(output)
+        }
         return HostProbeResult(
             ssh: .ok,
             query: .ok(samples: parsed.samples, partialWarnings: parsed.warnings),
@@ -370,7 +397,23 @@ public enum DemoFixtures {
 
     // MARK: - Naming
 
+    /// Column names taken from real `rocm-smi --csv` output on an MI300X host.
+    private static let rocmHeader = [
+        "device",
+        "Unique ID",
+        "Temperature (Sensor junction) (C)",
+        "Temperature (Sensor memory) (C)",
+        "Max Graphics Package Power (W)",
+        "Current Socket Graphics Package Power (W)",
+        "GPU use (%)",
+        "GPU Memory Allocated (VRAM%)",
+        "VRAM Total Memory (B)",
+        "VRAM Total Used Memory (B)",
+        "Card Series"
+    ].joined(separator: ",")
+
     private static func model(for host: HostConfig) -> String {
+        if host.vendor == .amd { return "AMD Instinct MI300X" }
         let name = host.effectiveName.uppercased()
         if name.contains("5090") { return "NVIDIA GeForce RTX 5090" }
         if name.contains("H200") { return "NVIDIA H200" }
@@ -380,7 +423,10 @@ public enum DemoFixtures {
     }
 
     private static func memoryTotal(for host: HostConfig) -> Double {
-        host.effectiveName.uppercased().contains("H200") ? 143_771 : 32_607
+        // 192 GiB on the MI300X, which is what the captured output reports:
+        // 206141652992 bytes. An AMD host showing 32 GB would be visibly wrong.
+        if host.vendor == .amd { return 196_592 }
+        return host.effectiveName.uppercased().contains("H200") ? 143_771 : 32_607
     }
 
     private static func id(_ index: Int) -> UUID {
@@ -440,6 +486,53 @@ struct GPUCSVRow {
             Self.render(memUtilization)
         ]
         return fields.joined(separator: ", ")
+    }
+
+    /// The same readings rendered as `rocm-smi` CSV.
+    ///
+    /// The columns and their order come from output captured from a real 8×
+    /// MI300X host, including the detail that matters most: **there is no edge
+    /// sensor**, so the demo shows the junction reading and the `junction` label
+    /// that goes with it. A demo built on invented column names would hide
+    /// exactly the thing worth seeing.
+    var rocmLine: String {
+        let limit = powerLimit ?? 750
+        let draw = powerDraw ?? (95 + (utilization ?? 0) / 100 * (limit - 130))
+        let memTemperature = memoryTemperature ?? temperature.map { $0 + 7 }
+        let memUtilization = memoryUtilization ?? min(100, (utilization ?? 0) + 25)
+
+        let fields: [String] = [
+            "card\(index)",
+            rocmUniqueID,
+            Self.render(temperature),
+            Self.render(memTemperature),
+            Self.render(limit),
+            Self.render(draw),
+            Self.render(utilization),
+            Self.render(memUtilization),
+            // rocm-smi reports VRAM in bytes, where the NVIDIA path uses MiB.
+            Self.renderBytes(memoryTotal),
+            Self.renderBytes(memoryUsed),
+            name
+        ]
+        return fields.joined(separator: ",")
+    }
+
+    /// A stable 64-bit id derived from the demo UUID, so a card keeps the same
+    /// identity across renders the way a real GUID does. FNV-1a, purely so the
+    /// demo does not need a random source.
+    private var rocmUniqueID: String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in uuid.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return String(format: "0x%016x", hash | 0x1000_0000_0000_0000)
+    }
+
+    private static func renderBytes(_ mebibytes: Double?) -> String {
+        guard let mebibytes else { return "N/A" }
+        return String(Int(mebibytes * 1024 * 1024))
     }
 
     /// Unsupported values are emitted as `N/A`, which is exactly what the real

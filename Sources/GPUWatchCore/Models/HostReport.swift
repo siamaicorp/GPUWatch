@@ -184,7 +184,7 @@ public struct HostReport: Identifiable, Equatable, Sendable {
 
     private func queryFailureDetail(_ reason: GPUQueryFailureReason) -> String {
         switch reason {
-        case .nvidiaSMINotFound: return "SSH OK, nvidia-smi not installed"
+        case .gpuToolNotFound: return "SSH OK, GPU tool not installed"
         case .commandFailed: return "SSH OK, GPU query failed"
         case .emptyOutput: return "SSH OK, GPU query returned nothing"
         case .malformedOutput: return "SSH OK, GPU output not understood"

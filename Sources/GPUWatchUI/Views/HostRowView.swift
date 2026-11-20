@@ -274,7 +274,7 @@ struct GPUDetailRow: View {
             }
 
             HStack(spacing: DS.Space.l) {
-                reading("thermometer.medium", DS.temperature(gpu.temperatureCelsius))
+                reading("thermometer.medium", DS.temperature(gpu.temperatureCelsius, sensor: gpu.temperatureSensor))
                 reading("gauge.medium", DS.percent(gpu.utilizationPercent))
                 reading("memorychip", DS.memory(used: gpu.memoryUsedMiB, total: gpu.memoryTotalMiB))
             }
@@ -397,7 +397,7 @@ struct GPUDetailRow: View {
 
     private var accessibilityLabel: String {
         var parts = [title, DS.word(for: gpu.health)]
-        parts.append(DS.temperature(gpu.temperatureCelsius))
+        parts.append(DS.temperature(gpu.temperatureCelsius, sensor: gpu.temperatureSensor))
         parts.append("\(DS.percent(gpu.utilizationPercent)) utilisation")
         parts.append("\(DS.memory(used: gpu.memoryUsedMiB, total: gpu.memoryTotalMiB)) VRAM")
         if let pressure = gpu.pressure, pressure.hasAnyReading {

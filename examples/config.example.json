@@ -25,6 +25,16 @@
       "enabled" : false,
       "expectedGPUCount" : 4,
       "id" : "9C5E7A13-4B86-4A29-9D1F-3B7C5E9A1B33"
+    },
+    {
+      "destination" : "mi300-05.example.internal",
+      "displayName" : "MI300-05",
+      "enabled" : true,
+      "expectedGPUCount" : 8,
+      "id" : "1D7F9B25-6C08-4E3A-BF21-4A9D7C1E5F44",
+      "temperatureWarningThreshold" : 90,
+      "username" : "ops",
+      "vendor" : "amd"
     }
   ],
   "schemaVersion" : 1,

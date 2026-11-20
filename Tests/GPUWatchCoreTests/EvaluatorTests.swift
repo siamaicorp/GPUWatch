@@ -253,7 +253,7 @@ final class GPUStateEvaluatorTests: XCTestCase {
         let report = evaluator.evaluate(
             host: host,
             baseline: baseline(host, (1...8).map(Fixtures.uuid)),
-            probe: queryFailedProbe(.nvidiaSMINotFound),
+            probe: queryFailedProbe(.gpuToolNotFound),
             previous: nil,
             settings: settings,
             now: now
@@ -261,8 +261,8 @@ final class GPUStateEvaluatorTests: XCTestCase {
 
         XCTAssertEqual(report.counts.unknown, 8)
         XCTAssertEqual(report.counts.missing, 0)
-        XCTAssertEqual(report.displayState, .gpuQueryFailed(.nvidiaSMINotFound))
-        XCTAssertEqual(report.statusDetail, "SSH OK, nvidia-smi not installed")
+        XCTAssertEqual(report.displayState, .gpuQueryFailed(.gpuToolNotFound))
+        XCTAssertEqual(report.statusDetail, "SSH OK, GPU tool not installed")
     }
 
     // MARK: - Staleness

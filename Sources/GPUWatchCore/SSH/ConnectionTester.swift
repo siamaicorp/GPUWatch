@@ -8,9 +8,9 @@ public struct ConnectionTestResult: Equatable, Sendable {
         case invalidConfiguration
         /// ssh could not establish a session.
         case sshFailed
-        /// ssh worked; `nvidia-smi` is not present on the host.
-        case nvidiaSMIMissing
-        /// ssh worked and nvidia-smi exists, but the query failed.
+        /// ssh worked; the GPU tool this host is read with is not present there.
+        case gpuToolMissing
+        /// ssh worked and the GPU tool exists, but the query failed.
         case gpuQueryFailed
         /// Everything worked.
         case success
@@ -19,7 +19,7 @@ public struct ConnectionTestResult: Equatable, Sendable {
             switch self {
             case .invalidConfiguration: return "Configuration problem"
             case .sshFailed: return "SSH failed"
-            case .nvidiaSMIMissing: return "SSH OK, no nvidia-smi"
+            case .gpuToolMissing: return "SSH OK, no GPU tool"
             case .gpuQueryFailed: return "SSH OK, GPU query failed"
             case .success: return "Success"
             }
@@ -81,7 +81,7 @@ public struct ConnectionTester: Sendable {
         switch probe.query {
         case let .failed(reason, detail):
             let stage: ConnectionTestResult.Stage =
-                reason == .nvidiaSMINotFound ? .nvidiaSMIMissing : .gpuQueryFailed
+                reason == .gpuToolNotFound ? .gpuToolMissing : .gpuQueryFailed
             return ConnectionTestResult(
                 stage: stage,
                 summary: reason.userFacingMessage,

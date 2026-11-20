@@ -63,6 +63,10 @@ public struct GPUSnapshot: Codable, Equatable, Sendable {
     public var uuid: String?
     public var model: String?
     public var temperatureCelsius: Double?
+    /// Stored so a carried-forward AMD reading keeps saying which sensor it
+    /// came from. Optional, so `last-known.json` written before this existed
+    /// still loads.
+    public var temperatureSensor: GPUTemperatureSensor?
     public var utilizationPercent: Double?
     public var memoryUsedMiB: Double?
     public var memoryTotalMiB: Double?
@@ -72,6 +76,7 @@ public struct GPUSnapshot: Codable, Equatable, Sendable {
         self.uuid = sample.uuid
         self.model = sample.model
         self.temperatureCelsius = sample.temperatureCelsius
+        self.temperatureSensor = sample.temperatureSensor
         self.utilizationPercent = sample.utilizationPercent
         self.memoryUsedMiB = sample.memoryUsedMiB
         self.memoryTotalMiB = sample.memoryTotalMiB
@@ -82,6 +87,7 @@ public struct GPUSnapshot: Codable, Equatable, Sendable {
         uuid: String? = nil,
         model: String? = nil,
         temperatureCelsius: Double? = nil,
+        temperatureSensor: GPUTemperatureSensor? = nil,
         utilizationPercent: Double? = nil,
         memoryUsedMiB: Double? = nil,
         memoryTotalMiB: Double? = nil
@@ -90,6 +96,7 @@ public struct GPUSnapshot: Codable, Equatable, Sendable {
         self.uuid = uuid
         self.model = model
         self.temperatureCelsius = temperatureCelsius
+        self.temperatureSensor = temperatureSensor
         self.utilizationPercent = utilizationPercent
         self.memoryUsedMiB = memoryUsedMiB
         self.memoryTotalMiB = memoryTotalMiB

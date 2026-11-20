@@ -5,7 +5,7 @@ import Foundation
 /// Why an SSH connection attempt did not produce a usable session.
 ///
 /// These cases are deliberately about the *transport*. A working transport that
-/// found no working NVIDIA driver is a different axis entirely — see
+/// found no working GPU driver is a different axis entirely — see
 /// `GPUQueryOutcome`.
 public enum SSHFailureKind: String, Codable, Equatable, Sendable {
     /// The host key is unknown, or it changed since the last connection.
@@ -60,8 +60,9 @@ public enum SSHOutcome: Equatable, Sendable {
 
 /// Why the remote GPU query did not yield a usable sample set.
 public enum GPUQueryFailureReason: String, Codable, Equatable, Sendable {
-    /// `nvidia-smi` is not on PATH on the remote host.
-    case nvidiaSMINotFound
+    /// The GPU tool the host was read with is not on PATH there, whether that
+    /// is `nvidia-smi` or ROCm's `rocm-smi`.
+    case gpuToolNotFound
     /// The command ran and exited non-zero, typically because the driver could
     /// not be reached from user space.
     case commandFailed
@@ -73,7 +74,7 @@ public enum GPUQueryFailureReason: String, Codable, Equatable, Sendable {
     case transportFailure
     public var shortLabel: String {
         switch self {
-        case .nvidiaSMINotFound: return "No nvidia-smi"
+        case .gpuToolNotFound: return "No GPU tool"
         case .commandFailed: return "Query failed"
         case .emptyOutput: return "Empty output"
         case .malformedOutput: return "Unparsable output"
@@ -264,6 +265,10 @@ public struct GPUReport: Identifiable, Equatable, Sendable {
     public var uuid: String?
     public var model: String?
     public var temperatureCelsius: Double?
+    /// Which sensor `temperatureCelsius` came from, so a threshold can be read
+    /// against the scale it was actually measured on. `nil` when nothing was
+    /// reported.
+    public var temperatureSensor: GPUTemperatureSensor?
     public var utilizationPercent: Double?
     public var memoryUsedMiB: Double?
     public var memoryTotalMiB: Double?
@@ -281,6 +286,7 @@ public struct GPUReport: Identifiable, Equatable, Sendable {
         uuid: String? = nil,
         model: String? = nil,
         temperatureCelsius: Double? = nil,
+        temperatureSensor: GPUTemperatureSensor? = nil,
         utilizationPercent: Double? = nil,
         memoryUsedMiB: Double? = nil,
         memoryTotalMiB: Double? = nil,
@@ -293,6 +299,7 @@ public struct GPUReport: Identifiable, Equatable, Sendable {
         self.uuid = uuid
         self.model = model
         self.temperatureCelsius = temperatureCelsius
+        self.temperatureSensor = temperatureSensor
         self.utilizationPercent = utilizationPercent
         self.memoryUsedMiB = memoryUsedMiB
         self.memoryTotalMiB = memoryTotalMiB

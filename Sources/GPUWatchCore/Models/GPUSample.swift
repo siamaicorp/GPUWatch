@@ -1,5 +1,32 @@
 import Foundation
 
+/// Which sensor a GPU's headline temperature came from.
+///
+/// The two are not interchangeable. Junction — the hotspot — reads hotter than
+/// the package sensor for the same card under the same load, so an operator's
+/// threshold means something different depending on which one is behind it.
+///
+/// This matters in practice rather than in theory: AMD's Instinct parts report
+/// **no edge sensor at all**, only junction and memory. Refusing to show a
+/// temperature there would leave every card on a healthy host looking
+/// unreadable, so junction is used — and the sensor travels with the number so
+/// the app can say which one it is, instead of presenting hotspot as though it
+/// were the same reading nvidia-smi gives.
+public enum GPUTemperatureSensor: String, Codable, Equatable, Sendable {
+    /// The package sensor: nvidia-smi's `temperature.gpu`, ROCm's `edge`.
+    case core
+    /// The hotspot, reported by ROCm as `junction`.
+    case junction
+
+    /// Shown only for the non-default sensor, so the common case stays quiet.
+    public var annotation: String? {
+        switch self {
+        case .core: return nil
+        case .junction: return "junction"
+        }
+    }
+}
+
 /// One row of `nvidia-smi --query-gpu` output.
 ///
 /// Every metric that the driver reported as unsupported (`N/A`,
@@ -18,6 +45,9 @@ public struct GPUSample: Equatable, Sendable {
     // MARK: Readability — is the driver answering for this card at all
 
     public var temperatureCelsius: Double?
+    /// Which sensor `temperatureCelsius` came from. `nil` when no temperature
+    /// was reported at all.
+    public var temperatureSensor: GPUTemperatureSensor?
     public var utilizationPercent: Double?
     public var memoryUsedMiB: Double?
     public var memoryTotalMiB: Double?
@@ -41,6 +71,7 @@ public struct GPUSample: Equatable, Sendable {
         uuid: String? = nil,
         model: String? = nil,
         temperatureCelsius: Double? = nil,
+        temperatureSensor: GPUTemperatureSensor? = nil,
         utilizationPercent: Double? = nil,
         memoryUsedMiB: Double? = nil,
         memoryTotalMiB: Double? = nil,
@@ -53,6 +84,7 @@ public struct GPUSample: Equatable, Sendable {
         self.uuid = uuid
         self.model = model
         self.temperatureCelsius = temperatureCelsius
+        self.temperatureSensor = temperatureSensor
         self.utilizationPercent = utilizationPercent
         self.memoryUsedMiB = memoryUsedMiB
         self.memoryTotalMiB = memoryTotalMiB

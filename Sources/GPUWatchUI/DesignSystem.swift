@@ -136,11 +136,18 @@ enum DS {
 
     // MARK: - Formatting
 
-    static func temperature(_ value: Double?) -> String {
+    /// A temperature, annotated with its sensor when it is not the package one.
+    ///
+    /// The annotation is what keeps a threshold honest: a junction reading is
+    /// hotter than the package sensor for the same card, so the number alone
+    /// would not say which scale it sits on.
+    static func temperature(_ value: Double?, sensor: GPUTemperatureSensor? = nil) -> String {
         guard let value else { return "—" }
-        return value.rounded() == value
+        let number = value.rounded() == value
             ? "\(Int(value))°C"
             : String(format: "%.1f°C", value)
+        guard let annotation = sensor?.annotation else { return number }
+        return "\(number) \(annotation)"
     }
 
     static func percent(_ value: Double?) -> String {
@@ -203,8 +210,8 @@ enum DS {
     /// The boundary of what a green dot means. Shown in tooltips and About so the
     /// claim is never read as more than it is.
     static let healthScopeNote =
-        "Green means the NVIDIA driver reported the GPU and answered its core metrics. "
-        + "It is not a check of CUDA workloads, NCCL, or inference servers."
+        "Green means the driver reported the GPU and answered its core metrics. "
+        + "It is not a check of CUDA or ROCm workloads, NCCL, or inference servers."
 }
 
 /// Wrapping grid used for GPU dots.

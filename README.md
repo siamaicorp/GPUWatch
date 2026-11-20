@@ -1,8 +1,8 @@
 # SIAM.AI GPU Watch
 
-A macOS menu bar app for monitoring NVIDIA GPUs across remote servers over SSH. View GPU counts, temperature, utilisation and memory usage for multiple hosts in one panel.
+A macOS menu bar app for monitoring NVIDIA and AMD GPUs across remote servers over SSH. View GPU counts, temperature, utilisation and memory usage for multiple hosts in one panel.
 
-Uses the server's existing SSH service and `nvidia-smi`; no additional monitoring agent is required.
+Uses the server's existing SSH service, with `nvidia-smi` for NVIDIA hosts and ROCm's `rocm-smi` for AMD ones; no additional monitoring agent is required.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)](#requirements)
@@ -25,10 +25,18 @@ Uses the server's existing SSH service and `nvidia-smi`; no additional monitorin
 
 - macOS 14 (Sonoma) or later. The project targets Apple Silicon and Intel; see the testing limitations below.
 - Xcode Command Line Tools to build from source.
-- SSH access to each server, with `nvidia-smi` on the remote user's `PATH`.
+- SSH access to each server, with that vendor's tool on the remote user's `PATH` — `nvidia-smi` for NVIDIA, `rocm-smi` for AMD.
 - A remote login shell that supports POSIX syntax, such as `sh`, `bash`, `dash` or `zsh`.
 
-Only physical NVIDIA GPUs are supported. MIG instances are not counted as additional cards. AMD GPUs are not supported.
+Only physical GPUs are counted. NVIDIA MIG instances are partitions of one card and are not counted as additional cards. A host with neither tool is reported as having no GPU tool, which is a statement about its software rather than about its cards.
+
+### Which vendor a host is read with
+
+Hosts detect the vendor by default: `nvidia-smi` is used when it answers with real rows, otherwise ROCm. The order matters, because a machine that has moved from NVIDIA to AMD often still has `nvidia-smi` installed and answering with an error, and reporting that error would be true but useless. A host can also be pinned to NVIDIA or AMD in the host editor, for a machine carrying the previous vendor's tool on its `PATH`.
+
+Both paths report the same readings, so thresholds, baselines and notifications do not need to know which vendor a host is. Differences in units are converted once, in the parser: ROCm reports VRAM in bytes, converted to MiB to match nvidia-smi.
+
+One reading is not flattened, and the app does not pretend otherwise: **temperature**. ROCm's edge sensor matches nvidia-smi's `temperature.gpu` and is preferred. AMD's Instinct cards have no edge sensor at all — only junction (hotspot) and memory — so the junction reading is used there, and labelled `junction` wherever the number appears, including in a threshold warning.
 
 ## Install
 
@@ -55,7 +63,7 @@ xcrun stapler staple dist/GPUWatch.app
 
 1. Click **GPU Watch** in the menu bar and choose **Add Host**.
 2. Enter an SSH alias or hostname. The app uses your existing `~/.ssh/config`, SSH agent and keys.
-3. Click **Test Connection** to check SSH access and `nvidia-smi`. If a check fails, the app identifies the stage that failed.
+3. Click **Test Connection** to check SSH access and the GPU tool. If a check fails, the app identifies the stage that failed: *SSH failed* / *SSH OK, no GPU tool* / *SSH OK, GPU query failed* / *success with N GPUs*.
 4. Once the GPUs are readable, choose **Register GPU Baseline**, review the UUIDs and confirm the expected cards.
 5. Set the polling interval and enable notifications if needed.
 
@@ -79,7 +87,7 @@ The app tracks SSH connectivity, GPU query results and data freshness separately
 
 Hover over an indicator for details. Shapes and accessibility labels accompany the colours.
 
-**A green dot confirms that the driver returned GPU data.** It does not verify CUDA, NCCL, vLLM or workload readiness.
+**A green dot confirms that the driver returned GPU data.** It does not verify CUDA, ROCm, NCCL, vLLM or workload readiness.
 
 Earlier readings are labelled **last known** and are not counted as current results. `N/A` is not converted to zero.
 
@@ -95,9 +103,9 @@ The expected count does not shrink to match the detected count. After a card rep
 
 The **load** row displays usage metrics separately from GPU readability:
 
-- Power draw and power limit (`power.draw`, `power.limit`).
-- Memory-controller utilisation (`utilization.memory`).
-- Memory temperature (`temperature.memory`), where reported by the driver.
+- Power draw and power limit (`power.draw`, `power.limit` on NVIDIA; ROCm reports the socket power and its cap).
+- Memory-controller utilisation (`utilization.memory` on NVIDIA; `GPU Memory Allocated` on ROCm).
+- Memory temperature (`temperature.memory` on NVIDIA; `Temperature (Sensor memory)` on ROCm), where reported by the driver.
 
 Available readings depend on the GPU and driver. If memory temperature is unavailable, the app omits that reading.
 
@@ -152,13 +160,20 @@ The app invokes `/usr/bin/ssh` with an argument array. It uses `~/.ssh/config`, 
 
 The app does not modify `~/.ssh/config` or `known_hosts`, or automatically accept new host keys. Verify unknown or changed keys in Terminal before connecting.
 
-The GPU query is:
+The GPU query is one of two fixed commands — a constant in the source, with nothing user-supplied interpolated into it:
 
 ```sh
+# NVIDIA
 nvidia-smi --query-gpu=index,uuid,name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,power.limit,temperature.memory,utilization.memory --format=csv,noheader,nounits
+
+# AMD (ROCm)
+rocm-smi --showproductname --showuniqueid --showtemp --showuse --showmemuse \
+         --showmeminfo vram --showpower --showmaxpower --csv
 ```
 
-The remote script wraps the output and `nvidia-smi` exit code in markers so the app can distinguish a failed GPU query from a failed SSH connection.
+The remote script wraps the output, the vendor that answered, and the command's exit code in markers so the app can distinguish a failed GPU query from a failed SSH connection. It always ends with `exit 0`, which is what makes that separation possible.
+
+ROCm's CSV is read **by column name, not by position**. rocm-smi builds its header from the union of keys present across the cards it found, so a machine whose cards report different metric sets gets a different column order than one whose cards agree. Reading by position would attach the wrong number to the wrong metric without saying so.
 
 There is no telemetry or analytics. The app's network connections use SSH to configured hosts. It stores the identity-file path, not passwords or private-key contents.
 
@@ -188,11 +203,13 @@ The menu bar uses `NSStatusItem` for status inspection and programmatic popover 
 ### Tests and diagnostics
 
 ```bash
-swift test
-./Scripts/verify-ui.sh
+swift test                    # 203 tests
+./Scripts/verify-ui.sh        # render every screen + report the menu bar item's position
 ```
 
 Tests cover CSV parsing, incomplete data, UUIDs and baselines, SSH failures, timeouts, stale results, notifications and unreadable configuration files. The parser and status evaluator can be tested without a server.
+
+For ROCm the coverage includes column order not changing the result, VRAM converted from bytes, a zero GUID, and warning lines printed before the header. One fixture is a full row set captured verbatim from a real 8× Instinct MI300X host; it is what showed that those cards report no edge sensor at all.
 
 The snapshot harness renders app views into `dist/screenshots/`. These images support visual review but do not replace testing interactions in the running app.
 
@@ -208,11 +225,14 @@ GPUWatch --show-popover
 
 - No per-process GPU usage, MIG instances, NVLink, ECC, queue depth, history or graphs.
 - Does not query `clocks_throttle_reasons.active` or recommend stopping jobs or changing scheduler settings.
-- AMD GPUs are not supported.
+- AMD identity is narrower than nvidia-smi's. AMD cards report a 64-bit GUID rather than a `GPU-…` string, and some consumer cards report `0` for every GPU. A zero GUID is treated as no identity, so those cards can be seen but not tracked across reboots.
+- AMD temperature may come from a different sensor. Instinct cards report no edge sensor at all, so the junction (hotspot) reading is used and labelled `junction` wherever the number appears. Junction reads hotter for the same card, so a threshold applies to whichever sensor a card actually has.
+- ROCm 7 replaces `rocm-smi` with `amd-smi`. Only `rocm-smi` is supported today.
 - Remote `csh` and `tcsh` login shells do not support the probe script and may produce an unclassified SSH error.
 - Notification logic has unit tests, but permission prompts and delivered banners have not been verified end-to-end on a real machine. Settings does not show denied notification permission until you try to enable notifications.
 - Existing test notes report macOS 27.2.1 on Apple Silicon. macOS 14–26 and Intel have not been verified.
 - Live checks used reachable hosts with functioning cards. Physically failed GPUs, changed host keys and mixed GPU models have not been tested.
+- AMD support was verified live against an 8× Instinct MI300X host on ROCm 7.8.0: all eight cards read, no warnings, and the vendor detected automatically. The parser is tested against that host's output captured verbatim.
 - Previous verification of scrolling and switches relied on tests after the development machine's screen-capture tool began returning black images.
 
 ## License

@@ -118,9 +118,9 @@ final class SSHTargetTests: XCTestCase {
 
     func testRemoteCommandIsExactlyOneArgument() {
         let target = try! SSHTarget.make(from: Fixtures.host())
-        let arguments = target.probeArguments(remoteCommand: RemoteProbe.script)
-        XCTAssertEqual(arguments.last, RemoteProbe.script)
-        XCTAssertEqual(arguments.filter { $0 == RemoteProbe.script }.count, 1)
+        let arguments = target.probeArguments(remoteCommand: RemoteProbe.nvidiaScript)
+        XCTAssertEqual(arguments.last, RemoteProbe.nvidiaScript)
+        XCTAssertEqual(arguments.filter { $0 == RemoteProbe.nvidiaScript }.count, 1)
     }
 
     func testPortAndIdentityArePassedAsSeparateArguments() {
@@ -137,15 +137,50 @@ final class RemoteProbeTests: XCTestCase {
     func testScriptContainsNoUserSuppliedText() {
         // The script is a constant, so nothing a user types can reach the remote
         // shell. Guard the constant itself.
-        XCTAssertTrue(RemoteProbe.script.contains("command -v nvidia-smi"))
-        XCTAssertFalse(RemoteProbe.script.contains("\"$("))
-        XCTAssertTrue(RemoteProbe.script.hasSuffix("exit 0"))
+        XCTAssertTrue(RemoteProbe.nvidiaScript.contains("command -v nvidia-smi"))
+        XCTAssertFalse(RemoteProbe.nvidiaScript.contains("\"$("))
+        XCTAssertTrue(RemoteProbe.nvidiaScript.hasSuffix("exit 0"))
     }
 
     func testScriptUsesTheDocumentedQueryFields() {
         let expected = "--query-gpu=index,uuid,name,temperature.gpu,utilization.gpu,memory.used,memory.total"
-        XCTAssertTrue(RemoteProbe.script.contains(expected))
-        XCTAssertTrue(RemoteProbe.script.contains("--format=csv,noheader,nounits"))
+        XCTAssertTrue(RemoteProbe.nvidiaScript.contains(expected))
+        XCTAssertTrue(RemoteProbe.nvidiaScript.contains("--format=csv,noheader,nounits"))
+    }
+
+    func testEveryScriptEndsWithExitZeroAndAnEndMarker() {
+        // The property that makes a driver failure distinguishable from an SSH
+        // failure has to hold for every vendor, not just the one that existed
+        // first.
+        for script in [RemoteProbe.nvidiaScript, RemoteProbe.amdScript, RemoteProbe.autoScript] {
+            XCTAssertTrue(script.hasSuffix("exit 0"), script)
+            XCTAssertTrue(script.contains(RemoteProbe.endMarker), script)
+        }
+    }
+
+    func testScriptSelectionFollowsTheHostVendor() {
+        XCTAssertEqual(RemoteProbe.script(for: .nvidia), RemoteProbe.nvidiaScript)
+        XCTAssertEqual(RemoteProbe.script(for: .amd), RemoteProbe.amdScript)
+        XCTAssertEqual(RemoteProbe.script(for: .auto), RemoteProbe.autoScript)
+    }
+
+    func testAMDQueryReadsByFlagsAndAsksForCSV() {
+        // The parser depends on --csv, and the flags are what make each metric
+        // present at all. Losing one would silently drop a reading.
+        for flag in [
+            "--showproductname", "--showuniqueid", "--showtemp", "--showuse",
+            "--showmemuse", "--showmeminfo vram", "--showpower", "--showmaxpower", "--csv"
+        ] {
+            XCTAssertTrue(RemoteProbe.rocmSMIArguments.contains(flag), flag)
+        }
+        XCTAssertTrue(RemoteProbe.amdScript.contains("command -v rocm-smi"))
+    }
+
+    func testAutoScriptWouldNotReachTheShellWithUserText() {
+        // The auto script is the one with shell variables in it, so it is the
+        // one most worth checking for an interpolated value.
+        XCTAssertFalse(RemoteProbe.autoScript.contains("\"$("))
+        XCTAssertTrue(RemoteProbe.autoScript.contains("GPUW_VENDOR=none"))
     }
 
     func testEnvelopeParsesSuccessfully() {
@@ -288,7 +323,89 @@ final class HostProbeRunnerTests: XCTestCase {
         guard case let .failed(reason, _) = probe.query else {
             return XCTFail("expected a GPU query failure")
         }
-        XCTAssertEqual(reason, .nvidiaSMINotFound)
+        XCTAssertEqual(reason, .gpuToolNotFound)
+    }
+
+    // MARK: - AMD
+
+    func testAMDHostIsReadWithTheROCmParser() async {
+        let runner = FakeSSHRunner()
+        runner.setDefault(.result(
+            terminationStatus: 0,
+            stdout: Fixtures.amdEnvelope(rows: [
+                Fixtures.rocmOutput(rows: [Fixtures.rocmRow(index: 0, id: Fixtures.rocmID(1))])
+            ]),
+            stderr: ""
+        ))
+
+        let probe = await HostProbeRunner(commands: runner)
+            .probe(host: Fixtures.host(vendor: .amd), now: Date())
+
+        XCTAssertTrue(probe.ssh.isOK)
+        guard case let .ok(samples, _) = probe.query else {
+            return XCTFail("expected readable AMD samples, got \(probe.query)")
+        }
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertEqual(samples[0].uuid, Fixtures.rocmID(1))
+        XCTAssertEqual(samples[0].model, "AMD Radeon RX 7900 XTX")
+        XCTAssertEqual(samples[0].temperatureCelsius, 42.0, "edge sensor, not junction")
+        XCTAssertEqual(samples[0].memoryTotalMiB ?? 0, 24560, accuracy: 0.001)
+    }
+
+    /// A ROCm row would be rejected outright by the NVIDIA parser (wrong field
+    /// count), so reaching `.ok` here is proof the vendor marker — not a guess
+    /// from the output's shape — chose the parser.
+    func testAutoDetectionUsesTheParserForTheVendorThatAnswered() async {
+        let runner = FakeSSHRunner()
+        runner.setDefault(.result(
+            terminationStatus: 0,
+            stdout: Fixtures.amdEnvelope(rows: [
+                Fixtures.rocmOutput(rows: [Fixtures.rocmRow(index: 0, id: Fixtures.rocmID(1))])
+            ]),
+            stderr: ""
+        ))
+
+        let probe = await HostProbeRunner(commands: runner)
+            .probe(host: Fixtures.host(vendor: .auto), now: Date())
+
+        guard case let .ok(samples, _) = probe.query else {
+            return XCTFail("expected readable AMD samples, got \(probe.query)")
+        }
+        XCTAssertEqual(samples[0].uuid, Fixtures.rocmID(1))
+    }
+
+    func testVendorMarkerOverridesTheScriptsLegacyPresenceMarker() {
+        // An auto script reports the vendor before the output block; a legacy
+        // NVIDIA-only script reports presence with no vendor at all. The
+        // explicit marker has to win, or a ROCm host would be read as NVIDIA.
+        let stdout = [
+            RemoteProbe.beginMarker,
+            RemoteProbe.smiPresentMarker,
+            "\(RemoteProbe.vendorPrefix)\(RemoteProbe.vendorAMDSuffix)",
+            RemoteProbe.outBeginMarker,
+            RemoteProbe.outEndMarker,
+            RemoteProbe.endMarker
+        ].joined(separator: "\n")
+
+        let envelope = ProbeEnvelope.parse(stdout: stdout)
+        XCTAssertEqual(envelope.vendor, .amd)
+        XCTAssertFalse(envelope.nvidiaSMIPresent)
+        XCTAssertTrue(envelope.toolPresent)
+    }
+
+    func testEachVendorSettingSendsItsOwnScript() async {
+        for vendor in GPUVendor.allCases {
+            let runner = FakeSSHRunner()
+            _ = await HostProbeRunner(commands: runner)
+                .probe(host: Fixtures.host(vendor: vendor), now: Date())
+
+            let sent = runner.recordedInvocations.first?.remoteCommand
+            XCTAssertEqual(
+                sent,
+                RemoteProbe.script(for: vendor),
+                "\(vendor) should send its own script"
+            )
+        }
     }
 
     func testTransportFailureYieldsBothAxes() async {

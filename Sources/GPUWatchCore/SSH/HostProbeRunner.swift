@@ -30,7 +30,7 @@ public struct HostProbeRunner: Sendable {
         do {
             result = try await commands.run(
                 target: target,
-                remoteCommand: RemoteProbe.script,
+                remoteCommand: RemoteProbe.script(for: host.vendor),
                 timeout: CheckTimeoutBudget.wholeCheckSeconds,
                 maxOutputBytes: CheckTimeoutBudget.maxOutputBytes
             )
@@ -65,7 +65,11 @@ public struct HostProbeRunner: Sendable {
             )
         }
 
-        let (query, queryDetail, complete) = interpretQuery(envelope: envelope, result: result)
+        let (query, queryDetail, complete) = interpretQuery(
+            envelope: envelope,
+            result: result,
+            requestedVendor: host.vendor
+        )
 
         return HostProbeResult(
             ssh: .ok,
@@ -81,7 +85,8 @@ public struct HostProbeRunner: Sendable {
 
     private func interpretQuery(
         envelope: ProbeEnvelope,
-        result: SSHCommandResult
+        result: SSHCommandResult,
+        requestedVendor: GPUVendor
     ) -> (GPUQueryOutcome, String, Bool) {
         guard envelope.transportConfirmed else {
             // We reached the host but the remote probe never completed, so we
@@ -93,28 +98,45 @@ public struct HostProbeRunner: Sendable {
             )
         }
 
-        guard envelope.nvidiaSMIPresent else {
+        // No supported tool answered. This is a statement about the host's
+        // software, not about its cards, so it must not be read as "no GPUs".
+        guard let vendor = envelope.vendor else {
+            let detail = missingToolDetail(for: requestedVendor)
             return (
-                .failed(reason: .nvidiaSMINotFound, detail: "nvidia-smi not on PATH"),
-                "nvidia-smi not found",
+                .failed(reason: .gpuToolNotFound, detail: detail),
+                detail,
                 false
             )
         }
 
-        let parsed = NVIDIAQueryParser.parse(envelope.queryOutput)
+        let parsed: ParsedGPUQuery
+        let toolName: String
+        switch vendor {
+        case .amd:
+            parsed = ROCmSMIParser.parse(envelope.queryOutput)
+            toolName = "rocm-smi"
+        case .nvidia, .auto:
+            // `.auto` is a host's setting, never something a script reports: the
+            // auto script resolves to a concrete vendor before it runs a query.
+            // It is grouped with NVIDIA only to keep this exhaustive rather than
+            // to assign it a meaning.
+            parsed = NVIDIAQueryParser.parse(envelope.queryOutput)
+            toolName = "nvidia-smi"
+        }
         let exitCode = envelope.queryReturnCode
         var detail = ""
         if let exitCode, exitCode != 0 {
             detail = envelope.queryOutput
                 .split(separator: "\n")
                 .first
-                .map(String.init) ?? "nvidia-smi exited \(exitCode)"
+                .map(String.init) ?? "\(toolName) exited \(exitCode)"
         }
 
         // A driver that exited non-zero and produced no usable row is a driver
         // problem, whatever else came back. Its own message ("couldn't
-        // communicate with the NVIDIA driver") is a better diagnosis than
-        // "unparsable output", so this is checked before the malformed branch.
+        // communicate with the NVIDIA driver", or ROCm's equivalent) is a better
+        // diagnosis than "unparsable output", so this is checked before the
+        // malformed branch.
         let producedNoUsableRows = parsed.isEntirelyUnusable || parsed.isEmpty
         if producedNoUsableRows, let exitCode, exitCode != 0 {
             return (
@@ -145,7 +167,7 @@ public struct HostProbeRunner: Sendable {
 
         var warnings = parsed.warnings
         if let exitCode, exitCode != 0 {
-            warnings.append("nvidia-smi exited with status \(exitCode)")
+            warnings.append("\(toolName) exited with status \(exitCode)")
         }
         if result.stdoutTruncated {
             warnings.append("output was truncated at the size limit")
@@ -159,5 +181,20 @@ public struct HostProbeRunner: Sendable {
             && (exitCode ?? 0) == 0
 
         return (.ok(samples: parsed.samples, partialWarnings: warnings), detail, complete)
+    }
+
+    /// What to say when no GPU tool answered, worded for the setting the
+    /// operator actually chose. An explicit vendor names the one tool that was
+    /// tried, so the message does not suggest a remedy that was never on the
+    /// table.
+    private func missingToolDetail(for requestedVendor: GPUVendor) -> String {
+        switch requestedVendor {
+        case .nvidia:
+            return "nvidia-smi not on PATH"
+        case .amd:
+            return "rocm-smi not on PATH"
+        case .auto:
+            return "neither nvidia-smi nor rocm-smi is on PATH"
+        }
     }
 }

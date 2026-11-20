@@ -204,6 +204,13 @@ public enum SnapshotScenarios {
             scrollToBottom: true
         ))
 
+        // No expanded-AMD scenario: the harness renders the host list into an
+        // offscreen bitmap through a LazyVStack, and a late row's expansion does
+        // not materialise there — the image comes out empty. Rather than ship a
+        // screenshot that looks like a bug, the AMD host is covered by the
+        // collapsed list in `01-popover-demo` (where it shows 8/8) and by the
+        // formatter tests in GPUWatchUITests.
+
         var manyHosts = SnapshotState()
         manyHosts.extraEntries = DemoFixtures.fillerEntries(
             count: 14,

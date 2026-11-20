@@ -248,12 +248,12 @@ final class AppModelTests: XCTestCase {
     func testDemoModeShowsEveryScenario() async {
         model.setDemoMode(true)
         let reports = model.visibleReports
-        XCTAssertEqual(reports.count, 7)
+        XCTAssertEqual(reports.count, 8)
 
         let states = reports.map(\.displayState)
         XCTAssertTrue(states.contains(.healthy))
         XCTAssertTrue(states.contains(.sshFailed(.unreachable)))
-        XCTAssertTrue(states.contains(.gpuQueryFailed(.nvidiaSMINotFound)))
+        XCTAssertTrue(states.contains(.gpuQueryFailed(.gpuToolNotFound)))
         XCTAssertTrue(states.contains(.stale))
         XCTAssertTrue(states.contains(.degraded))
     }
@@ -262,24 +262,60 @@ final class AppModelTests: XCTestCase {
         model.setDemoMode(true)
         let summary = model.summary
 
-        // 5090-1:4  5090-2:4  H200-01:8  H100-02:8  A100-03:4  L40S-04:2  H100-05:3
-        XCTAssertEqual(summary.expectedGPUs, 33)
+        // 5090-1:4  5090-2:4  H200-01:8  H100-02:8  A100-03:4  L40S-04:2
+        // H100-05:3  MI300X-06:8
+        XCTAssertEqual(summary.expectedGPUs, 41)
         // Readable are the GPUs actually read this round: 4 + 3 (H100-02 is
-        // unreachable, A100-03 cannot query, L40S-04 is stale) + 8 + 3.
-        XCTAssertEqual(summary.readableGPUs, 18)
+        // unreachable, A100-03 cannot query, L40S-04 is stale) + 8 + 3 + 8.
+        XCTAssertEqual(summary.readableGPUs, 26, "including all 8 AMD cards")
         XCTAssertEqual(summary.missingGPUs, 1, "5090-2 lost a card the baseline knows")
         XCTAssertEqual(summary.unexpectedGPUs, 1, "and gained one the baseline does not")
         XCTAssertEqual(summary.unknownGPUs, 14, "8 unreachable + 4 unqueryable + 2 stale")
         XCTAssertEqual(summary.warningGPUs, 1, "one GPU sits above H100-05's threshold")
-        XCTAssertEqual(summary.enabledHosts, 7)
-        XCTAssertEqual(summary.reachableHosts, 6, "H100-02 is unreachable")
+        XCTAssertEqual(summary.enabledHosts, 8)
+        XCTAssertEqual(summary.reachableHosts, 7, "H100-02 is unreachable")
         XCTAssertEqual(
             summary.staleHosts, 2,
             "H100-02's last good reading is 3 minutes old, so it is stale as well as unreachable"
         )
         XCTAssertFalse(summary.isFullyHealthy)
         XCTAssertTrue(summary.hasUnknowns)
-        XCTAssertEqual(summary.menuBarRatio, "18/33")
+        XCTAssertEqual(summary.menuBarRatio, "26/41")
+    }
+
+    /// The demo has to exercise the ROCm path, or the AMD feature is invisible
+    /// in the one place a person actually looks at it — and the junction label
+    /// would never be seen before it reached a real host.
+    func testDemoFleetIncludesAReadableAMDHost() async {
+        model.setDemoMode(true)
+        let report = try? XCTUnwrap(
+            model.visibleReports.first { $0.host.vendor == .amd }
+        )
+
+        guard let amd = report else { return XCTFail("no AMD host in the demo fleet") }
+        XCTAssertEqual(amd.counts.readable, 8)
+        XCTAssertEqual(amd.counts.expected, 8)
+        XCTAssertEqual(amd.counts.unknown, 0)
+        XCTAssertTrue(amd.hasCurrentCompleteReading)
+        XCTAssertEqual(
+            Set(amd.gpus.compactMap(\.model)), ["AMD Instinct MI300X"]
+        )
+        XCTAssertEqual(
+            Set(amd.gpus.compactMap(\.temperatureSensor)), [.junction],
+            "the demo mirrors the real cards, which report no edge sensor"
+        )
+        XCTAssertEqual(
+            Set(amd.gpus.compactMap(\.uuid)).count, 8,
+            "every demo card keeps a distinct identity"
+        )
+        XCTAssertEqual(
+            Set(amd.gpus.compactMap(\.memoryTotalMiB)), [196_592],
+            "192 GiB, the VRAM the captured MI300X output reports"
+        )
+        XCTAssertEqual(
+            amd.gpus.compactMap(\.temperatureCelsius).min(), 60,
+            "and the demo cards are readable, not blank"
+        )
     }
 
     func testDemoModeLeavesSavedHostsUntouched() async {

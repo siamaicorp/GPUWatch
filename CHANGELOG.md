@@ -2,6 +2,29 @@
 
 Notable changes per release. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org).
 
+## [1.2.0] — 2026-11-20
+
+AMD support, and an About panel that states which build you are running.
+
+### Added
+
+- **AMD GPUs over ROCm.** A host can now be read with `rocm-smi` alongside `nvidia-smi`. Both paths report the same readings, so thresholds, baselines and notifications do not know or care which vendor a host is.
+- **Per-host GPU vendor**, defaulting to *detect automatically*. Detection uses `nvidia-smi` only when it answers with real rows and otherwise falls back to ROCm, so a machine that still has the previous vendor's tool on its `PATH` is not misread. Each host can be pinned to NVIDIA or AMD to override detection.
+- ROCm readings are matched **by column name**, never by position: rocm-smi builds its header from the union of keys present across the cards, so column order is not a stable contract.
+- A temperature now carries **the sensor it came from**. ROCm's edge sensor is preferred; when a card has none, the junction (hotspot) reading is used and labelled, in the GPU detail row, the tooltip, and the threshold warning itself.
+- The **About** section states the version and build, read from the running bundle rather than written in the source, so it cannot describe a build other than the one running. `--diagnose` reports it too.
+
+### Changed
+
+- The GPU-query failure is now *No GPU tool* rather than *No nvidia-smi*, since either vendor's tool can be the one missing.
+
+### Known limitations
+
+- The ROCm path is verified by parsing output captured from a live 8× MI300X host (ROCm 7.8.0) and by running the probe script against stubbed tools; the complete SSH round trip to that host has not been exercised from this machine.
+- ROCm identity is a 64-bit GUID, and some cards report `0` for every GPU. A zero GUID is treated as no identity, so such cards are visible but cannot be tracked across reboots.
+- A junction reading is hotter than the package sensor for the same card. It is labelled wherever it is shown, but a temperature threshold is still one number applied to whichever sensor a given card has.
+- ROCm 7 begins replacing `rocm-smi` with `amd-smi`. Only `rocm-smi` is supported today.
+
 ## [1.1.0] — 2026-11-20
 
 Pressure becomes its own axis, and a demo video.
@@ -57,3 +80,4 @@ SSH reachability, GPU query status and data freshness are three separate axes an
 
 [1.0.0]: https://github.com/siamaicorp/GPUWatch/releases/tag/v1.0.0
 [1.1.0]: https://github.com/siamaicorp/GPUWatch/releases/tag/v1.1.0
+[1.2.0]: https://github.com/siamaicorp/GPUWatch/releases/tag/v1.2.0

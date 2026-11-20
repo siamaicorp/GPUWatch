@@ -33,6 +33,41 @@ final class PressureTests: XCTestCase {
         )
     }
 
+    /// A threshold crossing on a card whose temperature came from the junction
+    /// sensor has to say so. The same number means a hotter card on that scale
+    /// than on the package sensor, so a warning that hides the difference is
+    /// telling the operator something slightly untrue.
+    func testJunctionThresholdWarningNamesTheSensor() {
+        let headers = [
+            "device", "Unique ID", "Temperature (Sensor junction) (C)",
+            "GPU use (%)", "VRAM Total Memory (B)"
+        ]
+        let output = Fixtures.rocmOutput(headers: headers, rows: [
+            "card0,\(Fixtures.rocmID(1)),95.0,0,206141652992"
+        ])
+        let parsed = ROCmSMIParser.parse(output)
+        let host = Fixtures.host(vendor: .amd, temperatureThreshold: 90)
+
+        let evaluated = evaluator.evaluate(
+            host: host,
+            baseline: nil,
+            probe: HostProbeResult(
+                ssh: .ok,
+                query: .ok(samples: parsed.samples, partialWarnings: parsed.warnings),
+                attemptedAt: now,
+                transportConfirmed: true,
+                queryWasComplete: true,
+                parseWarnings: parsed.warnings
+            ),
+            previous: nil,
+            settings: settings,
+            now: now
+        )
+
+        let text = evaluated.gpus.first?.pressureWarnings.first?.text
+        XCTAssertEqual(text, "95°C (junction sensor) at or above the 90°C threshold")
+    }
+
     // MARK: - Parsing
 
     func testPressureFieldsParseFromTheSameRow() throws {

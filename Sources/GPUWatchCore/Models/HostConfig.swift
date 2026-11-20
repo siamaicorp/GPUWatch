@@ -18,6 +18,13 @@ public struct HostConfig: Codable, Identifiable, Hashable, Sendable {
     /// How many physical GPUs the operator expects to be present.
     public var expectedGPUCount: Int
     public var enabled: Bool
+    /// Which GPU tooling to read this host with.
+    ///
+    /// Defaults to `.auto`, which is the right answer for almost every host and
+    /// the only one an existing configuration carries. It is settable because
+    /// auto-detection can be wrong on a machine that still has the previous
+    /// vendor's tool on its PATH.
+    public var vendor: GPUVendor
     /// Pressure thresholds. All optional, all operator-declared.
     ///
     /// These describe how hard the machine is being worked, not whether it is
@@ -49,6 +56,7 @@ public struct HostConfig: Codable, Identifiable, Hashable, Sendable {
         identityFile: String? = nil,
         expectedGPUCount: Int = 0,
         enabled: Bool = true,
+        vendor: GPUVendor = .auto,
         temperatureWarningThreshold: Double? = nil,
         vramWarningFraction: Double? = nil,
         powerWarningFraction: Double? = nil
@@ -61,9 +69,46 @@ public struct HostConfig: Codable, Identifiable, Hashable, Sendable {
         self.identityFile = identityFile
         self.expectedGPUCount = expectedGPUCount
         self.enabled = enabled
+        self.vendor = vendor
         self.temperatureWarningThreshold = temperatureWarningThreshold
         self.vramWarningFraction = vramWarningFraction
         self.powerWarningFraction = powerWarningFraction
+    }
+
+    /// Decoded by hand for one reason: `vendor` was added after the first
+    /// release, and Swift's synthesised decoder does **not** fall back to a
+    /// property's default value. A synthesised `init(from:)` would therefore
+    /// throw on every `config.json` written before this field existed, and the
+    /// store's response to an undecodable file is to quarantine it — which
+    /// would look to the operator like their host list had been lost.
+    ///
+    /// So absence means `.auto` here, and only absence: a value we do not
+    /// recognise still fails, because silently reinterpreting a vendor we do
+    /// not understand is the kind of guess this app avoids.
+    ///
+    /// Every other field keeps exactly the strictness it had before. Loosening
+    /// them at the same time would quietly turn a truncated file into a host
+    /// list with invented defaults, which is a worse failure than saying so.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.displayName = try container.decode(String.self, forKey: .displayName)
+        self.destination = try container.decode(String.self, forKey: .destination)
+        self.username = try container.decodeIfPresent(String.self, forKey: .username)
+        self.port = try container.decodeIfPresent(Int.self, forKey: .port)
+        self.identityFile = try container.decodeIfPresent(String.self, forKey: .identityFile)
+        self.expectedGPUCount = try container.decode(Int.self, forKey: .expectedGPUCount)
+        self.enabled = try container.decode(Bool.self, forKey: .enabled)
+        self.vendor = try container.decodeIfPresent(GPUVendor.self, forKey: .vendor) ?? .auto
+        self.temperatureWarningThreshold = try container.decodeIfPresent(
+            Double.self, forKey: .temperatureWarningThreshold
+        )
+        self.vramWarningFraction = try container.decodeIfPresent(
+            Double.self, forKey: .vramWarningFraction
+        )
+        self.powerWarningFraction = try container.decodeIfPresent(
+            Double.self, forKey: .powerWarningFraction
+        )
     }
 
     /// Whether this host has asked to be told about pressure at all.

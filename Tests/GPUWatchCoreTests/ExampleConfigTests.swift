@@ -24,7 +24,7 @@ final class ExampleConfigTests: XCTestCase {
             .decode(AppConfiguration.self, from: load("config.example.json"))
 
         XCTAssertEqual(configuration.schemaVersion, StoreSchema.currentVersion)
-        XCTAssertEqual(configuration.hosts.count, 3)
+        XCTAssertEqual(configuration.hosts.count, 4)
 
         let hosts = configuration.hosts
         XCTAssertEqual(hosts[0].destination, "dgx-prod-01")
@@ -34,6 +34,17 @@ final class ExampleConfigTests: XCTestCase {
         XCTAssertEqual(hosts[1].identityFile, "~/.ssh/id_ed25519")
         XCTAssertEqual(hosts[1].temperatureWarningThreshold, 80)
         XCTAssertFalse(hosts[2].enabled, "the example shows a disabled host")
+        XCTAssertEqual(hosts[3].vendor, .amd, "the example shows an AMD host")
+    }
+
+    /// The example carries hosts written before `vendor` existed, so it also
+    /// documents that leaving the key out is valid and means auto-detection.
+    func testHostsWithoutAVendorKeyMeanAutomaticDetection() throws {
+        let configuration = try ConfigurationStore.decoder
+            .decode(AppConfiguration.self, from: load("config.example.json"))
+
+        let withoutKey = configuration.hosts.filter { $0.vendor == .auto }
+        XCTAssertFalse(withoutKey.isEmpty, "the example must still show a pre-vendor host")
     }
 
     func testEveryExampleHostPassesValidation() throws {

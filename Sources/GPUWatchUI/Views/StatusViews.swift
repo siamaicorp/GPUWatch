@@ -98,7 +98,7 @@ struct GPUDotGrid: View {
 
         var readings: [String] = []
         if let temperature = gpu.temperatureCelsius {
-            readings.append(DS.temperature(temperature))
+            readings.append(DS.temperature(temperature, sensor: gpu.temperatureSensor))
         }
         if let utilization = gpu.utilizationPercent {
             readings.append("\(DS.percent(utilization)) util")

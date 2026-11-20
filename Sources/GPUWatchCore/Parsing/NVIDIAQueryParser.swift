@@ -147,11 +147,15 @@ public enum NVIDIAQueryParser {
                 continue
             }
 
+            let temperature = GPUFieldValue.double(fields[3])
             let sample = GPUSample(
                 index: index,
                 uuid: uuid,
                 model: GPUFieldValue.string(fields[2]),
-                temperatureCelsius: GPUFieldValue.double(fields[3]),
+                temperatureCelsius: temperature,
+                // `temperature.gpu` is the package sensor, so NVIDIA always
+                // reports the same scale the ROCm path calls `core`.
+                temperatureSensor: temperature == nil ? nil : .core,
                 utilizationPercent: GPUFieldValue.double(fields[4]),
                 memoryUsedMiB: GPUFieldValue.double(fields[5]),
                 memoryTotalMiB: GPUFieldValue.double(fields[6]),

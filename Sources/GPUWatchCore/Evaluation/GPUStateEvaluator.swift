@@ -237,6 +237,7 @@ public struct GPUStateEvaluator: Sendable {
                     uuid: sample.uuid,
                     model: sample.model,
                     temperatureCelsius: sample.temperatureCelsius,
+                    temperatureSensor: sample.temperatureSensor,
                     utilizationPercent: sample.utilizationPercent,
                     memoryUsedMiB: sample.memoryUsedMiB,
                     memoryTotalMiB: sample.memoryTotalMiB,
@@ -367,9 +368,14 @@ public struct GPUStateEvaluator: Sendable {
         if let threshold = host.temperatureWarningThreshold,
            let temperature = sample.temperatureCelsius,
            temperature >= threshold {
+            // Naming a non-default sensor here matters: junction reads hotter
+            // than the package sensor, so "50°C over threshold" means something
+            // different depending on which one the number came from.
+            let scale = sample.temperatureSensor?.annotation.map { " (\($0) sensor)" } ?? ""
             warnings.append(GPUWarning(
                 kind: .pressure,
-                text: "\(format(temperature))°C at or above the \(format(threshold))°C threshold"
+                text: "\(format(temperature))°C\(scale) at or above the "
+                    + "\(format(threshold))°C threshold"
             ))
         }
 
@@ -503,8 +509,8 @@ public extension SSHFailureKind {
 public extension GPUQueryFailureReason {
     var userFacingMessage: String {
         switch self {
-        case .nvidiaSMINotFound:
-            return "SSH worked, but nvidia-smi was not found on this host."
+        case .gpuToolNotFound:
+            return "SSH worked, but no supported GPU tool was found on this host."
         case .commandFailed:
             return "SSH worked, but nvidia-smi could not query the driver."
         case .emptyOutput:

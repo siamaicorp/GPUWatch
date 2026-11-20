@@ -177,8 +177,9 @@ enum Diagnostics {
     ///
     /// This is the same path the Test Connection button and the poller use, so a
     /// green result here means the app will work against that host. It reads the
-    /// operator's existing SSH configuration, runs only the fixed `nvidia-smi`
-    /// query, and writes nothing to the configuration store.
+    /// operator's existing SSH configuration, runs only the fixed GPU query for
+    /// whichever vendor the host declares, and writes nothing to the
+    /// configuration store.
     static var checkArgument: String? {
         let arguments = CommandLine.arguments
         guard let index = arguments.firstIndex(of: "--check"), index + 1 < arguments.count else {
@@ -222,13 +223,15 @@ enum Diagnostics {
         if !result.samples.isEmpty {
             report([
                 "",
-                "index  uuid                                            temp   util   vram          "
+                "index  uuid                                            temp            util   vram          "
                     + "power      memtemp memutil  model"
             ])
             for sample in result.samples {
                 let index = sample.index.map(String.init) ?? "?"
                 let uuid = sample.uuid ?? "(no uuid)"
-                let temperature = sample.temperatureCelsius.map { "\(Int($0))C" } ?? "N/A"
+                let temperature = sample.temperatureCelsius.map {
+                    "\(Int($0))C" + (sample.temperatureSensor?.annotation.map { " (\($0))" } ?? "")
+                } ?? "N/A"
                 let utilization = sample.utilizationPercent.map { "\(Int($0))%" } ?? "N/A"
                 let memory: String
                 if let used = sample.memoryUsedMiB, let total = sample.memoryTotalMiB {
@@ -251,7 +254,9 @@ enum Diagnostics {
 
                 report(["\(index.padding(toLength: 6, withPad: " ", startingAt: 0))"
                     + " \(uuid.padding(toLength: 46, withPad: " ", startingAt: 0))"
-                    + " \(temperature.padding(toLength: 6, withPad: " ", startingAt: 0))"
+                    // Wide enough for the sensor annotation, so "49C (junction)"
+                    // is not cut off at the point where it matters.
+                    + " \(temperature.padding(toLength: 15, withPad: " ", startingAt: 0))"
                     + " \(utilization.padding(toLength: 6, withPad: " ", startingAt: 0))"
                     + " \(memory.padding(toLength: 13, withPad: " ", startingAt: 0))"
                     + " \(power.padding(toLength: 10, withPad: " ", startingAt: 0))"
@@ -364,6 +369,7 @@ enum Diagnostics {
         let configuration = coordinator.model.settings
         var lines: [String] = [
             "GPU Watch diagnostics",
+            "version: \(AppInfo.display)",
             "bundle identifier: \(Bundle.main.bundleIdentifier ?? "(no bundle)")",
             "bundle path: \(Bundle.main.bundlePath)",
             "menu bar accessory: \(Bundle.main.object(forInfoDictionaryKey: "LSUIElement") != nil ? "yes (LSUIElement set)" : "not declared")",

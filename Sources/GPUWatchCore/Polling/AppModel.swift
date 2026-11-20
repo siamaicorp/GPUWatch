@@ -616,6 +616,7 @@ public final class AppModel {
                     uuid: stored.uuid,
                     model: stored.model,
                     temperatureCelsius: stored.temperatureCelsius,
+                    temperatureSensor: stored.temperatureSensor,
                     utilizationPercent: stored.utilizationPercent,
                     memoryUsedMiB: stored.memoryUsedMiB,
                     memoryTotalMiB: stored.memoryTotalMiB,

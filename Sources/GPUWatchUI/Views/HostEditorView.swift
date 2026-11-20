@@ -141,6 +141,17 @@ struct HostEditorView: View {
             .font(DS.TextStyle.caption)
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
+
+            LabeledField("GPU vendor", help: draft.vendor.explanation) {
+                Picker("", selection: $draft.vendor) {
+                    ForEach(GPUVendor.allCases, id: \.self) { vendor in
+                        Text(vendor.label).tag(vendor)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 220, alignment: .leading)
+            }
         }
     }
 
@@ -420,7 +431,7 @@ struct TestResultView: View {
         case .success: return DS.Status.ok
         case .invalidConfiguration: return DS.Status.warn
         case .sshFailed, .gpuQueryFailed: return DS.Status.bad
-        case .nvidiaSMIMissing: return DS.Status.warn
+        case .gpuToolMissing: return DS.Status.warn
         }
     }
 
@@ -429,7 +440,7 @@ struct TestResultView: View {
         case .success: return "checkmark.circle.fill"
         case .invalidConfiguration: return "exclamationmark.triangle.fill"
         case .sshFailed: return "bolt.horizontal.circle"
-        case .nvidiaSMIMissing: return "questionmark.circle"
+        case .gpuToolMissing: return "questionmark.circle"
         case .gpuQueryFailed: return "display.trianglebadge.exclamationmark"
         }
     }
@@ -477,6 +488,8 @@ struct TestResultView: View {
     private func sampleSummary(_ sample: GPUSample) -> String {
         let index = sample.index.map { "\($0)" } ?? "?"
         let uuid = sample.uuid ?? "no uuid"
-        return "  \(index)  \(uuid)  \(DS.temperature(sample.temperatureCelsius))  \(DS.memory(used: sample.memoryUsedMiB, total: sample.memoryTotalMiB))"
+        return "  \(index)  \(uuid)  "
+            + "\(DS.temperature(sample.temperatureCelsius, sensor: sample.temperatureSensor))  "
+            + "\(DS.memory(used: sample.memoryUsedMiB, total: sample.memoryTotalMiB))"
     }
 }

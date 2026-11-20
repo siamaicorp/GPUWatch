@@ -184,7 +184,11 @@ struct SettingsView: View {
                 .padding(.bottom, DS.Space.xs)
             Text("GPU Watch")
                 .font(DS.TextStyle.bodyStrong)
-            Text("An open-source GPU monitor by SIAM.AI Corporation. Checks NVIDIA GPUs "
+            Text(AppInfo.display)
+                .font(DS.TextStyle.caption)
+                .foregroundStyle(.tertiary)
+                .textSelection(.enabled)
+            Text("An open-source GPU monitor by SIAM.AI Corporation. Checks NVIDIA and AMD GPUs "
                 + "on remote hosts over SSH; no agent is installed on the server.")
                 .font(DS.TextStyle.caption)
                 .foregroundStyle(.secondary)
@@ -201,8 +205,10 @@ struct SettingsView: View {
 
             Text(
                 "High utilisation and high VRAM use are not failures. Values the driver reports as "
-                + "unsupported are shown as unknown, never as zero. MIG instances are partitions of a "
-                + "physical card and are not counted as additional GPUs. AMD GPUs are not supported."
+                + "unsupported are shown as unknown, never as zero. NVIDIA MIG instances are partitions "
+                + "of a physical card and are not counted as additional GPUs. AMD cards are read through "
+                + "ROCm; a host with neither tool is reported as having no GPU tool rather than as a "
+                + "machine without GPUs."
             )
             .font(DS.TextStyle.caption)
             .foregroundStyle(.tertiary)
@@ -217,6 +223,13 @@ struct SettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
 
             Hairline()
+
+            HStack(spacing: DS.Space.m) {
+                if let repository = AppInfo.repository {
+                    Link(AppInfo.repositoryLabel, destination: repository)
+                        .font(.system(size: 12, weight: .medium))
+                }
+            }
 
             Text("GPL-3.0-or-later · Copyright © 2026 SIAM.AI Corporation")
                 .font(DS.TextStyle.caption)
